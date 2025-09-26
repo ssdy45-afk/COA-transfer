@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>분석 증명서 변환기</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" xintegrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* 스크롤바 스타일링 */
+        textarea::-webkit-scrollbar, #output::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track, #output::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb, #output::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover, #output::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* PDF 출력용 스타일 */
+        .output-container {
+            font-family: Arial, sans-serif;
+            color: #000;
+        }
+        .output-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .output-table th, .output-table td {
+            padding: 4px 8px;
+            vertical-align: top;
+        }
+        .results-table th {
+            border: 1px solid #000;
+            background-color: #f2f2f2;
+            font-weight: bold;
+            text-align: center;
+        }
+        .results-table td {
+            border: 1px solid #000;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">분석 증명서 (CoA) 자동 변환기</h1>
+            <p class="mt-2 text-md text-gray-600">필수 정보를 입력하고 원본 텍스트를 붙여넣은 후 '변환하기' 버튼을 누르세요.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- 입력 섹션 -->
+            <div class="bg-white p-6 rounded-xl shadow-lg flex flex-col">
+                <h2 class="text-xl font-semibold mb-4 border-b pb-2">1. 데이터 입력</h2>
+                <div class="space-y-4 mb-4">
+                    <div>
+                        <label for="productNoInput" class="block text-sm font-medium text-gray-700">Product No</label>
+                        <input type="text" id="productNoInput" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="예: 7700">
+                    </div>
+                    <div>
+                        <label for="lotNoInput" class="block text-sm font-medium text-gray-700">LOT Number</label>
+                        <input type="text" id="lotNoInput" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="예: OAL215">
+                    </div>
+                    <div>
+                        <label for="descriptionInput" class="block text-sm font-medium text-gray-700">Description</label>
+                        <input type="text" id="descriptionInput" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="예: Acetonitrile">
+                    </div>
+                </div>
+                <textarea id="inputData" class="w-full h-80 p-4 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition flex-grow" placeholder="여기에 나머지 원본 텍스트를 붙여넣으세요..."></textarea>
+                <button id="convertBtn" class="mt-4 w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform transform hover:scale-105">
+                    변환하기
+                </button>
+            </div>
+
+            <!-- 출력 섹션 -->
+            <div class="bg-white p-6 rounded-xl shadow-lg flex flex-col">
+                <h2 class="text-xl font-semibold mb-4 border-b pb-2">2. 변환된 결과</h2>
+                <div id="outputWrapper" class="p-4 border border-gray-200 rounded-lg bg-gray-50 min-h-96 overflow-auto flex-grow">
+                    <div id="output" class="output-container bg-white">
+                         <p class="text-gray-500 p-4">변환 결과가 여기에 표시됩니다.</p>
+                    </div>
+                </div>
+                 <button id="pdfBtn" class="mt-4 w-full bg-green-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-transform transform hover:scale-105">
+                    PDF로 저장
+                </button>
+            </div>
+        </div>
+         <!-- 사용법 안내 -->
+        <div class="mt-8 bg-white p-6 rounded-xl shadow-lg">
+            <h2 class="text-xl font-semibold mb-4">사용 방법</h2>
+            <p>상단에 Product No, LOT Number, Description을 직접 입력합니다. 나머지 텍스트 데이터는 아래의 큰 입력창에 붙여넣고 '변환하기'를 누르면 됩니다. 'PDF로 저장' 버튼으로 결과를 다운로드할 수 있습니다.</p>
+            <div class="mt-4 p-4 bg-gray-100 rounded-lg">
+                <h3 class="font-semibold mb-2">예시 데이터 (복사해서 아래 입력창에 사용)</h3>
+                <pre class="text-sm text-gray-700 whitespace-pre-wrap">[75-05-8] (CH3CN) FW:41.05
+LC-MS Grade
+
+TESTS	UNIT	SPECIFICATION	RESULTS
+LC-MS Suitability		
+ESI+ mode (as Reserpine)	ppb	Max. 50	<50
+ESI- mode (as 4-Nitrophenol)	ppb	Max. 50	<50
+... (이하 생략) ...
+
+Mfg. Date :	2024 10 21
+Exp. Date :	3 years after Mfg. Date
+Test Method :	ACS 11th Edition
+Tested by :	Jong-sun, Won
+                </pre>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const convertBtn = document.getElementById('convertBtn');
+        const pdfBtn = document.getElementById('pdfBtn');
+        const inputData = document.getElementById('inputData');
+        const output = document.getElementById('output');
+        const productNoInput = document.getElementById('productNoInput');
+        const lotNoInput = document.getElementById('lotNoInput');
+        const descriptionInput = document.getElementById('descriptionInput');
+
+        convertBtn.addEventListener('click', () => {
+            const text = inputData.value.trim();
+            const productNo = productNoInput.value.trim();
+            const lotNo = lotNoInput.value.trim();
+            const description = descriptionInput.value.trim();
+
+            if (!text || !productNo || !lotNo || !description) {
+                output.innerHTML = '<p class="text-red-500 p-4">모든 입력 필드를 채워주세요.</p>';
+                return;
+            }
+
+            try {
+                const parsedData = parseTextData(text);
+                const finalData = { ...parsedData, productNo, lotNo, description };
+                renderOutput(finalData);
+            } catch (error) {
+                console.error("Parsing Error:", error);
+                output.innerHTML = `<p class="text-red-500 p-4">데이터를 파싱하는 중 오류가 발생했습니다. (오류: ${error.message})</p>`;
+            }
+        });
+
+        pdfBtn.addEventListener('click', () => {
+            const content = document.getElementById('output');
+            if (content.childElementCount === 1 && content.firstElementChild.tagName === 'P') {
+                alert('PDF로 저장할 변환된 데이터가 없습니다.');
+                return;
+            }
+            
+            const opt = {
+              margin:       [10, 5, 10, 5],
+              filename:     `${lotNoInput.value.trim() || 'COA'}_${new Date().toISOString().split('T')[0]}.pdf`,
+              image:        { type: 'jpeg', quality: 0.98 },
+              html2canvas:  { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
+              jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().from(content).set(opt).save();
+        });
+
+        function parseTextData(text) {
+            const lines = text.split('\n');
+            let data = { casNo: 'N/A', mfgDate: 'N/A', retestDate: 'N/A', items: [] };
+            
+            const casNoRegex = /\[(\d{2,}-\d{2,}-\d)\]/;
+            const mfgDateRegex = /Mfg\. Date\s*:\s*(\d{4}\s\d{1,2}\s\d{1,2})/;
+            const expDateRegex = /Exp\. Date\s*:\s*(\d+)\s*years after Mfg\. Date/;
+
+            let mfgDateStr = '';
+            let yearsUntilExp = null;
+            
+            lines.forEach(line => {
+                let match;
+                if ((match = line.match(casNoRegex))) data.casNo = match[1];
+                if ((match = line.match(mfgDateRegex))) {
+                    mfgDateStr = match[1].replace(/\s/g, '-');
+                    data.mfgDate = mfgDateStr;
+                }
+                if ((match = line.match(expDateRegex))) {
+                    yearsUntilExp = parseInt(match[1], 10);
+                }
+            });
+
+            if (yearsUntilExp && mfgDateStr) {
+                const mfg = new Date(mfgDateStr);
+                mfg.setFullYear(mfg.getFullYear() + yearsUntilExp);
+                data.retestDate = mfg.toISOString().split('T')[0];
+            } else if (mfgDateStr) {
+                 const mfg = new Date(mfgDateStr);
+                 mfg.setFullYear(mfg.getFullYear() + 3);
+                 data.retestDate = mfg.toISOString().split('T')[0];
+            }
+
+            const tableStartIndex = lines.findIndex(line => line.toUpperCase().startsWith('TESTS'));
+            if (tableStartIndex !== -1) {
+                const tableLines = lines.slice(tableStartIndex + 1);
+                let currentGroupName = '';
+                tableLines.forEach(line => {
+                    if (line.trim() === '' || line.toUpperCase().includes('MFG. DATE')) return;
+                    const parts = line.split(/\t|\s{2,}/);
+                    
+                    if (parts.length >= 3) {
+                        let testName = parts[0].trim();
+                        if (currentGroupName && !testName.startsWith('-')) currentGroupName = ''; 
+                        if (testName.startsWith('-')) testName = `${currentGroupName} ${testName}`;
+                        data.items.push({
+                            name: testName,
+                            unit: parts[1].trim() || '-',
+                            spec: parts[2].trim() || '-',
+                            value: parts[3] ? parts[3].trim() : '-'
+                        });
+                    } else if (parts.length === 1 && parts[0].trim() !== '') {
+                        const trimmedPart = parts[0].trim();
+                        if (!trimmedPart.endsWith(':') && trimmedPart.length > 0) currentGroupName = trimmedPart;
+                    }
+                });
+            } else {
+                 throw new Error("'TESTS' 헤더를 찾을 수 없습니다.");
+            }
+            return data;
+        }
+        
+        function renderOutput(data) {
+            const infoItems = [
+                { label: 'Product No.:', value: data.productNo },
+                { label: 'LOT Number.', value: data.lotNo },
+                { label: 'CAS Number.', value: data.casNo },
+                { label: 'Description', value: data.description },
+                { label: 'Quality Test/Release Date:', value: data.mfgDate },
+                { label: 'Retest Date:', value: data.retestDate }
+            ];
+
+            const infoRowsHtml = infoItems.map(item => `
+                <tr>
+                    <td style="font-weight: bold; width: 180px; font-size: 11px; padding: 1px 0;">${item.label}</td>
+                    <td style="font-size: 11px; padding: 1px 0;">${item.value}</td>
+                </tr>
+            `).join('');
+
+            const resultRowsHtml = data.items.map(item => `
+                <tr>
+                    <td style="font-size: 10px; width: 40%;">${item.name}</td>
+                    <td style="font-size: 10px; width: 20%; text-align: center;">${item.unit}</td>
+                    <td style="font-size: 10px; width: 20%; text-align: center;">${item.spec}</td>
+                    <td style="font-size: 10px; width: 20%; text-align: center;">${item.value}</td>
+                </tr>
+            `).join('');
+            
+            output.innerHTML = `
+                <div style="padding: 20px; background-color: white; font-family: Arial, sans-serif;">
+                    <table class="output-table" style="width: 100%;">
+                        <tbody>
+                            <tr>
+                                <!-- Left Column -->
+                                <td style="width: 55%; vertical-align: top;">
+                                    <div style="font-family: Arial, Helvetica, sans-serif;">
+                                        <h2 style="font-size: 24px; font-weight: bold; color: #CC0000; margin: 0;">Thermo Fisher</h2>
+                                        <p style="font-size: 12px; font-weight: lighter; letter-spacing: 4px; margin: 0;">S C I E N T I F I C</p>
+                                    </div>
+                                    <br>
+                                    <table class="output-table">
+                                        <tbody>${infoRowsHtml}</tbody>
+                                    </table>
+                                </td>
+                                <!-- Right Column -->
+                                <td style="width: 45%; vertical-align: top; text-align: right;">
+                                     <h3 style="text-align: center; font-family: 'Times New Roman', Times, serif; font-size: 20px; font-weight: bold; margin-bottom: 10px;">
+                                        Certificate of Analysis
+                                    </h3>
+                                    <div style="font-size: 9px; line-height: 1.2;">
+                                        (Incheon Airport Logistics Complex) D5,D6<br>
+                                        150 Gonghangdong-ro 296 beon-gil Jung-gu, Incheon 22379, Korea<br>
+                                        Tel. +82-2-2023-0600<br>
+                                        Fax. +82-2-6196-5501,2
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <br>
+
+                    <table class="output-table results-table">
+                        <thead>
+                            <tr>
+                                <th style="font-size: 11px; width: 40%;">Result Name</th>
+                                <th style="font-size: 11px; width: 20%;">Units</th>
+                                <th style="font-size: 11px; width: 20%;">Specifications</th>
+                                <th style="font-size: 11px; width: 20%;">Test Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${resultRowsHtml}
+                        </tbody>
+                    </table>
+
+                    <br><br><br>
+
+                    <table class="output-table">
+                        <tbody>
+                            <tr>
+                                <td style="width: 60%;"></td>
+                                <td style="width: 40%; text-align: center;">
+                                    <svg width="200" height="50" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M20 35 Q 50 10, 80 30 T 140 25 Q 160 40, 180 20" stroke="black" fill="transparent" stroke-width="1.5"/>
+                                    </svg>
+                                    <div style="border-top: 1px solid #000; padding-top: 5px; font-size: 12px; line-height: 1.4;">
+                                        <p style="margin: 0; font-weight: bold;">Guseon.Jeong</p>
+                                        <p style="margin: 0; font-size: 11px;">Quality Control Supervisor</p>
+                                        <p style="margin: 0; font-size: 11px;">${data.mfgDate}</p>
+                                        <p style="margin: 0; font-size: 11px;">Incheon, Korea</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+    </script>
+
+</body>
+</html>
+
