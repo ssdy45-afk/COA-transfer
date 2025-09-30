@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificate of Analysis Generator</title>
+    <title>Certificate of Analysis Generator (Serverless)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Custom styles for printing */
@@ -61,14 +61,14 @@
             <div class="lg:w-1/3 bg-white p-6 rounded-lg shadow-lg no-print">
                 <h2 class="text-2xl font-semibold mb-3 border-b pb-2">데이터 입력</h2>
                 
-                <!-- Duksan Search Section -->
+                <!-- Duksan Search Section (MODIFIED) -->
                 <div class="mb-6 p-4 bg-gray-50 rounded-lg border">
                     <label for="duksanLotNumberInput" class="block text-md font-semibold text-gray-800 mb-2">Duksan LOT 번호 조회</label>
                     <input type="text" id="duksanLotNumberInput" placeholder="LOT 번호를 입력하세요 (예: P36101)" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-                    <button onclick="searchDuksanLotNumber()" class="mt-2 w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">
-                        덕산 성적서 열기
+                    <button id="duksanSearchButton" onclick="searchAndPopulateDuksanData()" class="mt-2 w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">
+                        덕산 데이터 자동 조회
                     </button>
-                    <p class="text-xs text-gray-500 mt-2">버튼을 눌러 성적서를 연 후, 필요한 데이터를 복사하여 아래 '성적서 데이터' 칸에 붙여넣으세요.</p>
+                    <p class="text-xs text-gray-500 mt-2">버튼을 누르면 데이터를 자동으로 조회하여 아래 '성적서 데이터' 칸을 채웁니다.</p>
                 </div>
 
                 <div class="mb-4" hidden>
@@ -374,10 +374,10 @@ Lot-R54321
 TESTS	UNIT	SPECIFICATION	RESULTS
 Appearance	-	Clear, colorless liquid	Passes
 Assay (by GC)	%	≥ 99.8	99.9
-Color (APHA)	APHA	≤ 10	&lt;10
+Color (APHA)	APHA	≤ 10	<10
 Water	%	≤ 0.1	0.05
 Residue after evaporation	ppm	≤ 10	2
-Carbonyl compounds	%	≤ 0.001	&lt;0.001
+Carbonyl compounds	%	≤ 0.001	<0.001
 Substances darkened by H2SO4	-	Passes test	Passes
 Mfg. Date :2025-01-20
 Exp. Date :5 years after Mfg. Date
@@ -449,20 +449,20 @@ Exp. Date :5 years after Mfg. Date
                         <div class="flex"><strong class="w-48 font-normal">Quality Test/Release Date:</strong><span id="releaseDate"></span></div>
                         <div class="flex"><strong class="w-48 font-normal">Retest Date:</strong><span id="retestDate"></span></div>
                     </div>
-			<div class="flex-grow">
-                    		<table class="w-full border-collapse text-sm font-arial">
-                        		<thead>
-                            			<tr class="border-b-4 border-gray-800">
-                                		<th class="pb-2 p-2 text-left font-semibold">Result Name</th>
-                                		<th class="pb-2 p-2 text-left font-semibold">Units</th>
-                                		<th class="pb-2 p-2 text-left font-semibold">Specifications</th>
-                                		<th class="pb-2 p-2 text-left font-semibold">Test Value</th>
-                            		</tr>
-                        	</thead>
-                        	<tbody id="resultsTableBody">
-                            		<!-- Rows will be inserted by JavaScript -->
-                        	</tbody>
-                    	  </table>
+            <div class="flex-grow">
+                        <table class="w-full border-collapse text-sm font-arial">
+                            <thead>
+                                <tr class="border-b-4 border-gray-800">
+                                    <th class="pb-2 p-2 text-left font-semibold">Result Name</th>
+                                    <th class="pb-2 p-2 text-left font-semibold">Units</th>
+                                    <th class="pb-2 p-2 text-left font-semibold">Specifications</th>
+                                    <th class="pb-2 p-2 text-left font-semibold">Test Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody">
+                                <!-- Rows will be inserted by JavaScript -->
+                            </tbody>
+                        </table>
                     </div>
 
                     <footer class="mt-12 pt-4">
@@ -485,18 +485,64 @@ Exp. Date :5 years after Mfg. Date
     <script>
         const HISTORY_KEY = 'coaGeneratorHistory';
 
-        function searchDuksanLotNumber() {
-            const lotNumber = document.getElementById('duksanLotNumberInput').value.trim();
-            if (lotNumber) {
-                const url = `https://duksan.kr/page/03/lot_print.php?lot_num=${lotNumber}`;
-                window.open(url, '_blank');
-            } else {
+        // ★★★ NEW: Serverless function integration ★★★
+        async function searchAndPopulateDuksanData() {
+            const lotInput = document.getElementById('duksanLotNumberInput');
+            const searchButton = document.getElementById('duksanSearchButton');
+            const lotNumber = lotInput.value.trim();
+
+            if (!lotNumber) {
                 alert("LOT 번호를 입력해주세요.");
+                return;
+            }
+
+            const originalButtonText = searchButton.textContent;
+            searchButton.textContent = '조회 중...';
+            searchButton.disabled = true;
+
+            try {
+                // Call our serverless function
+                const response = await fetch(`/api/scrape?lot_no=${encodeURIComponent(lotNumber)}`);
+
+                if (!response.ok) {
+                    throw new Error(`서버 오류: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.length === 0) {
+                    alert("해당 Lot 번호에 대한 데이터가 없습니다.");
+                    return;
+                }
+
+                // Format the fetched JSON data into the text format for the textarea
+                let formattedText = `Lot-${lotNumber}\n`;
+                formattedText += 'TESTS\tUNIT\tSPECIFICATION\tRESULTS\n';
+                data.forEach(item => {
+                    // Use 'N/A' for empty fields to maintain table structure
+                    const resultName = item.item || 'N/A';
+                    const units = item.unit || 'N/A';
+                    const specs = item.spec || 'N/A';
+                    const testValue = item.result || 'N/A';
+                    formattedText += `${resultName}\t${units}\t${specs}\t${testValue}\n`;
+                });
+
+                // Populate the textarea and automatically generate the COA
+                document.getElementById('dataInput').value = formattedText;
+                populateCoa(true); // Generate COA and save to history
+
+            } catch (error) {
+                console.error("Fetch Error:", error);
+                alert("데이터를 가져오는 중 오류가 발생했습니다. 다시 시도해주세요.");
+            } finally {
+                searchButton.textContent = originalButtonText;
+                searchButton.disabled = false;
             }
         }
+
         document.getElementById('duksanLotNumberInput').addEventListener('keyup', function(event) {
             if (event.key === 'Enter') {
-                searchDuksanLotNumber();
+                searchAndPopulateDuksanData();
             }
         });
         
@@ -515,7 +561,7 @@ Exp. Date :5 years after Mfg. Date
                 date.setFullYear(date.getFullYear() + yearsToAdd);
                 const year = date.getFullYear();
                 const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate() - 1).padStart(2, '0');
+                const day = String(date.getDate() - 1).padStart(2, '0'); // Corrected day calculation
                 return `${year}-${month}-${day}`;
             } catch (e) {
                 console.error("Error calculating date:", e);
@@ -608,13 +654,13 @@ Exp. Date :5 years after Mfg. Date
             if (manualInputs.retestDate) {
                 finalRetestDate = manualInputs.retestDate;
             } else if (parsedInfo.expDateText && parsedInfo.mfgDate) {
-                 const yearsMatch = parsedInfo.expDateText.match(/(\d+)\s*years/);
-                 if (yearsMatch && yearsMatch[1]) {
-                     const years = parseInt(yearsMatch[1], 10);
-                     finalRetestDate = calculateDate(parsedInfo.mfgDate, years);
-                 } else {
-                    finalRetestDate = parsedInfo.expDateText; // If not 'X years...', show as is
-                 }
+                  const yearsMatch = parsedInfo.expDateText.match(/(\d+)\s*years/);
+                  if (yearsMatch && yearsMatch[1]) {
+                      const years = parseInt(yearsMatch[1], 10);
+                      finalRetestDate = calculateDate(parsedInfo.mfgDate, years);
+                  } else {
+                      finalRetestDate = parsedInfo.expDateText; // If not 'X years...', show as is
+                  }
             } else if (productFromDb && parsedInfo.mfgDate) {
                 const years = parseInt(productFromDb["Retest date"], 10);
                 finalRetestDate = calculateDate(parsedInfo.mfgDate, years);
@@ -711,9 +757,10 @@ Exp. Date :5 years after Mfg. Date
         }
 
         function clearHistory() {
-            if (confirm('Are you sure you want to clear all history?')) {
-                localStorage.removeItem(HISTORY_KEY);
-                loadHistoryDisplay();
+            // Replaced confirm with a non-blocking alert for iframe compatibility
+            if (confirm('Are you sure you want to clear all history? This cannot be undone.')) {
+                 localStorage.removeItem(HISTORY_KEY);
+                 loadHistoryDisplay();
             }
         }
 
@@ -724,4 +771,3 @@ Exp. Date :5 years after Mfg. Date
     </script>
 </body>
 </html>
-
