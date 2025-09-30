@@ -35,7 +35,9 @@ module.exports = async (req, res) => {
     const response = await scraper.post(targetUrl, formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+        // ★★★ 수정: 요청 출처(Referer) 정보를 추가하여 보안 우회 ★★★
+        'Referer': targetUrl
       },
     });
 
