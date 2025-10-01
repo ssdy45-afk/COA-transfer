@@ -5,24 +5,42 @@ const cheerio = require('cheerio');
 async function getBrowserInstance() {
   console.log("Launching Puppeteer with chrome-aws-lambda...");
   
-  // executablePath를 가져오지 못할 경우를 대비
-  let executablePath = await chromium.executablePath;
-  if (!executablePath) {
-    // 로컬 개발 환경일 경우 puppeteer-core의 chromium을 사용할 수 있지만, Vercel에서는 chrome-aws-lambda를 사용해야 함.
-    // 대체 방안이 없으므로 에러를 throw할 수 있음.
-    throw new Error('Unable to find executable path for Chromium');
+  try {
+    // Chromium 실행 경로 명시적 확인
+    const executablePath = await chromium.executablePath;
+    console.log("Executable path:", executablePath);
+    
+    if (!executablePath) {
+      throw new Error('Chromium executable not found');
+    }
+
+    const browser = await puppeteer.launch({
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ],
+      defaultViewport: {
+        width: 1280,
+        height: 720
+      },
+      executablePath: executablePath,
+      headless: true, // 명시적으로 true로 설정
+      ignoreHTTPSErrors: true,
+    });
+    
+    console.log("Puppeteer launched successfully");
+    return browser;
+  } catch (error) {
+    console.error("Browser launch error:", error);
+    throw error;
   }
-  
-  const browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: executablePath,
-    headless: true, // 명시적으로 true로 설정
-    ignoreHTTPSErrors: true,
-  });
-  
-  console.log("Puppeteer launched successfully");
-  return browser;
 }
 
 module.exports = async (req, res) => {
@@ -57,10 +75,14 @@ module.exports = async (req, res) => {
     browser = await getBrowserInstance();
     page = await browser.newPage();
 
+    // User-Agent 설정 (중요)
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+
     // 리소스 제한
     await page.setRequestInterception(true);
     page.on('request', (request) => {
-      if (['image', 'font', 'stylesheet'].includes(request.resourceType())) {
+      const resourceType = request.resourceType();
+      if (['image', 'font', 'stylesheet', 'media'].includes(resourceType)) {
         request.abort();
       } else {
         request.continue();
@@ -68,33 +90,45 @@ module.exports = async (req, res) => {
     });
 
     // 타임아웃 설정
-    await page.setDefaultNavigationTimeout(20000);
-    await page.setDefaultTimeout(15000);
+    page.setDefaultNavigationTimeout(25000);
+    page.setDefaultTimeout(15000);
 
     const targetUrl = 'https://www.duksan.kr/product/pro_lot_search.php';
     console.log(`Navigating to: ${targetUrl}`);
 
-    await page.goto(targetUrl, { 
-      waitUntil: 'domcontentloaded',
-      timeout: 20000
+    const response = await page.goto(targetUrl, { 
+      waitUntil: 'networkidle2',
+      timeout: 25000
     });
+
+    if (!response.ok()) {
+      throw new Error(`Page load failed: ${response.status()}`);
+    }
 
     console.log("Page loaded successfully");
 
-    // 입력 필드에 값 설정
-    await page.waitForSelector('input[name="lot_no"]', { timeout: 5000 });
-    await page.$eval('input[name="lot_no"]', (input, value) => {
-      input.value = value;
-    }, lot_no);
+    // 입력 필드 대기 및 값 설정
+    await page.waitForSelector('input[name="lot_no"]', { timeout: 10000 });
+    await page.focus('input[name="lot_no"]');
+    await page.keyboard.type(lot_no, { delay: 100 });
+
+    // 입력값 확인
+    const inputValue = await page.$eval('input[name="lot_no"]', el => el.value);
+    console.log("Input value confirmed:", inputValue);
 
     // 검색 실행
     console.log("Clicking search button...");
+    
+    // 네비게이션 대기 시작
     const navigationPromise = page.waitForNavigation({
-      waitUntil: 'domcontentloaded',
-      timeout: 20000
+      waitUntil: 'networkidle2',
+      timeout: 25000
     });
 
+    // 버튼 클릭
     await page.click('button.btn-lot-search');
+    
+    // 네비게이션 완료 대기
     await navigationPromise;
 
     console.log("Search completed, parsing results...");
@@ -109,7 +143,13 @@ module.exports = async (req, res) => {
     const $ = cheerio.load(content);
     const results = [];
 
-    $('div.box-body table.table-lot-view tbody tr').each((index, element) => {
+    const table = $('div.box-body table.table-lot-view');
+    if (table.length === 0) {
+      console.log("No result table found");
+      return res.status(200).json([]);
+    }
+
+    table.find('tbody tr').each((index, element) => {
       const $row = $(element);
       const $cells = $row.find('td');
 
@@ -126,20 +166,36 @@ module.exports = async (req, res) => {
 
     console.log(`Found ${results.length} results`);
 
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
+    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
     res.status(200).json(results);
 
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      lot_no: lot_no
+    });
 
     res.status(500).json({ 
       error: 'Processing failed',
-      message: error.message
+      message: error.message,
+      suggestion: 'Please try again with a different lot number'
     });
 
   } finally {
-    // 리소스 정리
-    if (page) await page.close().catch(console.error);
-    if (browser) await browser.close().catch(console.error);
+    // 리소스 정리 (에러 핸들링 추가)
+    try {
+      if (page) await page.close();
+    } catch (e) {
+      console.error("Error closing page:", e);
+    }
+    
+    try {
+      if (browser) await browser.close();
+    } catch (e) {
+      console.error("Error closing browser:", e);
+    }
+    
+    console.log("Cleanup completed");
   }
 };
