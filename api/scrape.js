@@ -2,32 +2,16 @@ const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
 const cheerio = require('cheerio');
 
-// ★★★ 최종 수정: 최신 라이브러리 및 Vercel 환경을 위한 '안전모드' 실행 옵션 적용 ★★★
+// ★★★ 최종 수정: Vercel 환경과의 호환성이 검증된 '클래식 안정 버전' 라이브러리 조합 사용 ★★★
 async function getBrowserInstance() {
-  console.log("Locating Chromium executable path...");
-  // Vercel 환경에서는 특정 경로에 브라우저가 위치하므로, 해당 경로를 직접 지정해줄 수 있습니다.
-  const executablePath = await chromium.executablePath() || '/usr/bin/chromium-browser';
-  console.log(`Executable path found: ${executablePath}`);
-
-  if (!executablePath) {
-    throw new Error("Chromium executable not found. The library might have failed to download it.");
-  }
-
-  // Vercel과 같은 제한된 환경에서 안정성을 높이는 '안전모드' 옵션을 명시적으로 추가합니다.
-  const browserArgs = [
-    ...chromium.args,
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--single-process'
-  ];
-
-  console.log("Launching Puppeteer with safety arguments...");
+  console.log("Launching Puppeteer with classic stable version...");
+  
   const browser = await puppeteer.launch({
-    args: browserArgs,
+    // @sparticuz/chromium가 제공하는, AWS Lambda/Vercel 환경에 최적화된 기본 인수들을 사용합니다.
+    args: chromium.args,
     defaultViewport: chromium.defaultViewport,
-    executablePath: executablePath,
-    headless: 'new',
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
     ignoreHTTPSErrors: true,
   });
   console.log("Puppeteer launched successfully.");
@@ -43,7 +27,7 @@ module.exports = async (req, res) => {
 
   let browser = null;
   try {
-    console.log("헤드리스 브라우저 실행 시작 (최신 안정 버전)...");
+    console.log("헤드리스 브라우저 실행 시작 (클래식 안정 버전)...");
     browser = await getBrowserInstance();
     const page = await browser.newPage();
     
