@@ -677,18 +677,19 @@ Exp. Date :5 years after Mfg. Date
         });
 
         /**
-         * Calculates a date string in YYYY-MM-DD format.
+         * Calculates a retest date string in YYYY-MM-DD format with -1 day.
          * @param {string} baseDateStr - The starting date in 'YYYY-MM-DD' format.
          * @param {number} yearsToAdd - The number of years to add.
          * @returns {string} The calculated date string or an empty string if invalid.
          */
-        function calculateDate(baseDateStr, yearsToAdd) {
+        function calculateRetestDate(baseDateStr, yearsToAdd) {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(baseDateStr) || !Number.isFinite(yearsToAdd)) {
                 return '';
             }
             try {
                 const date = new Date(baseDateStr);
                 date.setFullYear(date.getFullYear() + yearsToAdd);
+                date.setDate(date.getDate() - 1); // Subtract 1 day
                 const year = date.getFullYear();
                 const month = String(date.getMonth() + 1).padStart(2, '0');
                 const day = String(date.getDate()).padStart(2, '0');
@@ -698,7 +699,6 @@ Exp. Date :5 years after Mfg. Date
                 return '';
             }
         }
-
 
         function populateCoa(saveToHistory = false) {
             // Clear previous UI
@@ -766,10 +766,22 @@ Exp. Date :5 years after Mfg. Date
                 }
             });
 
-            // --- 2. Look up product in DB ---
+            // --- 2. Look up product in DB and auto-populate manual inputs ---
             let productFromDb = null;
             if (parsedInfo.productCode && productDatabase.length > 0) {
                 productFromDb = productDatabase.find(p => String(p["Product code"]) === parsedInfo.productCode);
+                
+                // Auto-populate manual inputs if empty
+                if (productFromDb) {
+                    if (!manualInputs.productNo && productFromDb["Product No."]) {
+                        document.getElementById('manualProductNo').value = productFromDb["Product No."];
+                        manualInputs.productNo = productFromDb["Product No."];
+                    }
+                    if (!manualInputs.description && productFromDb["Description"]) {
+                        document.getElementById('manualDescription').value = productFromDb["Description"];
+                        manualInputs.description = productFromDb["Description"];
+                    }
+                }
             }
 
             // --- 3. Auto-detect product information if missing ---
@@ -802,7 +814,7 @@ Exp. Date :5 years after Mfg. Date
             elements.casNumber.textContent = parsedInfo.casNumber;
             elements.releaseDate.textContent = parsedInfo.mfgDate;
             
-            // Retest Date Priority Logic
+            // Retest Date Priority Logic with -1 day calculation
             let finalRetestDate = '';
             if (manualInputs.retestDate) {
                 finalRetestDate = manualInputs.retestDate;
@@ -810,13 +822,13 @@ Exp. Date :5 years after Mfg. Date
                   const yearsMatch = parsedInfo.expDateText.match(/(\d+)\s*years/);
                   if (yearsMatch && yearsMatch[1]) {
                       const years = parseInt(yearsMatch[1], 10);
-                      finalRetestDate = calculateDate(parsedInfo.mfgDate, years);
+                      finalRetestDate = calculateRetestDate(parsedInfo.mfgDate, years);
                   } else {
                       finalRetestDate = parsedInfo.expDateText; // If not 'X years...', show as is
                   }
             } else if (productFromDb && parsedInfo.mfgDate) {
                 const years = parseInt(productFromDb["Retest date"], 10);
-                finalRetestDate = calculateDate(parsedInfo.mfgDate, years);
+                finalRetestDate = calculateRetestDate(parsedInfo.mfgDate, years);
             }
             elements.retestDate.textContent = finalRetestDate;
 
