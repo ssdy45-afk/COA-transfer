@@ -2,22 +2,35 @@ const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
 const cheerio = require('cheerio');
 
-// ★★★ 최종 수정: 가장 안정적인 라이브러리 버전과 함께, 서버리스 환경에 최적화된 실행 방식을 사용합니다. ★★★
+// ★★★ 최종 수정: 최신 라이브러리 및 Vercel 환경을 위한 '안전모드' 실행 옵션 적용 ★★★
 async function getBrowserInstance() {
+  console.log("Locating Chromium executable path...");
   const executablePath = await chromium.executablePath();
+  console.log(`Executable path found: ${executablePath ? 'Yes' : 'No'}`);
 
-  // executablePath가 없으면 브라우저를 실행할 수 없으므로 오류를 발생시킵니다.
   if (!executablePath) {
-    throw new Error("Chromium executable not found.");
+    throw new Error("Chromium executable not found. The library might have failed to download it.");
   }
 
-  return puppeteer.launch({
-    args: chromium.args,
+  // Vercel과 같은 제한된 환경에서 안정성을 높이는 '안전모드' 옵션을 명시적으로 추가합니다.
+  const browserArgs = [
+    ...chromium.args,
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--single-process'
+  ];
+
+  console.log("Launching Puppeteer with safety arguments...");
+  const browser = await puppeteer.launch({
+    args: browserArgs,
     defaultViewport: chromium.defaultViewport,
     executablePath: executablePath,
-    headless: 'new', // 최신 headless 모드를 사용합니다.
+    headless: 'new',
     ignoreHTTPSErrors: true,
   });
+  console.log("Puppeteer launched successfully.");
+  return browser;
 }
 
 module.exports = async (req, res) => {
@@ -29,13 +42,12 @@ module.exports = async (req, res) => {
 
   let browser = null;
   try {
-    console.log("헤드리스 브라우저 실행 시작 (안정 버전)...");
+    console.log("헤드리스 브라우저 실행 시작 (최신 안정 버전)...");
     browser = await getBrowserInstance();
     const page = await browser.newPage();
     
     const targetUrl = 'https://www.duksan.kr/product/pro_lot_search.php';
     console.log(`페이지로 이동 중: ${targetUrl}`);
-    // 네트워크 타임아웃을 30초로 늘려 안정성을 확보합니다.
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     console.log("페이지 로딩 완료.");
 
@@ -44,7 +56,6 @@ module.exports = async (req, res) => {
     
     console.log("검색 버튼 클릭 및 결과 페이지 대기...");
     await Promise.all([
-      // 네비게이션 타임아웃도 30초로 설정합니다.
       page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
       page.click('button.btn-lot-search'), 
     ]);
