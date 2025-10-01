@@ -48,6 +48,14 @@
         .font-arial {
             font-family: Arial, sans-serif;
         }
+        /* Loading animation */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-4 sm:p-8">
@@ -64,10 +72,18 @@
                 <!-- Duksan Search Section (MODIFIED) -->
                 <div class="mb-6 p-4 bg-gray-50 rounded-lg border">
                     <label for="duksanLotNumberInput" class="block text-md font-semibold text-gray-800 mb-2">Duksan LOT 번호 조회</label>
-                    <input type="text" id="duksanLotNumberInput" placeholder="LOT 번호를 입력하세요 (예: P36101)" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-                    <button id="duksanSearchButton" onclick="searchAndPopulateDuksanData()" class="mt-2 w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">
-                        덕산 데이터 자동 조회
+                    <input type="text" id="duksanLotNumberInput" placeholder="LOT 번호를 입력하세요 (예: P95205)" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <button id="duksanSearchButton" onclick="searchAndPopulateDuksanData()" class="mt-2 w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 flex items-center justify-center">
+                        <span id="buttonText">덕산 데이터 자동 조회</span>
+                        <svg id="loadingSpinner" class="hidden loading-spinner w-4 h-4 ml-2 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
                     </button>
+                    
+                    <!-- Status message area -->
+                    <div id="searchStatus" class="mt-2 text-sm"></div>
+                    
                     <p class="text-xs text-gray-500 mt-2">버튼을 누르면 데이터를 자동으로 조회하여 아래 '성적서 데이터' 칸을 채웁니다.</p>
                 </div>
 
@@ -485,7 +501,7 @@ Exp. Date :5 years after Mfg. Date
     <script>
         const HISTORY_KEY = 'coaGeneratorHistory';
 
-        // ★★★ NEW: Serverless function integration ★★★
+        // ★★★ UPDATED: Serverless function integration ★★★
         async function searchAndPopulateDuksanData() {
             const lotInput = document.getElementById('duksanLotNumberInput');
             const searchButton = document.getElementById('duksanSearchButton');
@@ -496,56 +512,141 @@ Exp. Date :5 years after Mfg. Date
                 return;
             }
 
-            const originalButtonText = searchButton.textContent;
-            searchButton.textContent = '조회 중...';
-            searchButton.disabled = true;
+            showLoading(true);
+            showStatus('데이터를 조회 중입니다...', 'loading');
 
             try {
                 // Call our serverless function
-                const response = await fetch(`/api/scrape?lot_no=${encodeURIComponent(lotNumber)}`);
-
+                const response = await fetch(`https://coa-transfer.vercel.app/api/scrape?lot_no=${encodeURIComponent(lotNumber)}`);
+                
+                console.log("Response status:", response.status);
+                
                 if (!response.ok) {
-                    throw new Error(`서버 오류: ${response.statusText}`);
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `서버 오류: ${response.statusText}`);
                 }
 
                 const data = await response.json();
+                console.log("Received data:", data);
 
-                if (data.length === 0) {
-                    alert("해당 Lot 번호에 대한 데이터가 없습니다.");
-                    return;
+                if (!data.success) {
+                    throw new Error(data.error || "해당 Lot 번호에 대한 데이터가 없습니다.");
+                }
+
+                if (!data.tests || data.tests.length === 0) {
+                    throw new Error("테스트 결과 데이터가 없습니다.");
                 }
 
                 // Format the fetched JSON data into the text format for the textarea
-                let formattedText = `Lot-${lotNumber}\n`;
+                let formattedText = '';
+                
+                // Add product information if available
+                if (data.product && data.product.name) {
+                    formattedText += `${data.product.name}`;
+                    if (data.product.code) {
+                        formattedText += ` [${data.product.code}]`;
+                    }
+                    formattedText += '\n';
+                }
+                
+                formattedText += `Lot-${lotNumber}\n`;
                 formattedText += 'TESTS\tUNIT\tSPECIFICATION\tRESULTS\n';
-                data.forEach(item => {
-                    // Use 'N/A' for empty fields to maintain table structure
-                    const resultName = item.item || 'N/A';
+                
+                data.tests.forEach(item => {
+                    const resultName = item.test || item.item || 'N/A';
                     const units = item.unit || 'N/A';
-                    const specs = item.spec || 'N/A';
+                    const specs = item.specification || item.spec || 'N/A';
                     const testValue = item.result || 'N/A';
                     formattedText += `${resultName}\t${units}\t${specs}\t${testValue}\n`;
                 });
 
-                // Populate the textarea and automatically generate the COA
+                // Add manufacturing date if available from manual inputs or use current date
+                const currentDate = new Date().toISOString().split('T')[0];
+                formattedText += `Mfg. Date :${currentDate}\n`;
+                formattedText += `Exp. Date :5 years after Mfg. Date\n`;
+
+                // Populate the textarea
                 document.getElementById('dataInput').value = formattedText;
-                populateCoa(true); // Generate COA and save to history
+                
+                // Auto-fill manual inputs if product data is available
+                if (data.product) {
+                    if (data.product.name && !document.getElementById('manualDescription').value) {
+                        document.getElementById('manualDescription').value = data.product.name;
+                    }
+                    if (data.product.code && !document.getElementById('manualProductNo').value) {
+                        document.getElementById('manualProductNo').value = data.product.code;
+                    }
+                }
+                
+                if (!document.getElementById('manualLotNumber').value) {
+                    document.getElementById('manualLotNumber').value = lotNumber;
+                }
+
+                // Generate COA and save to history
+                populateCoa(true);
+                
+                // Show success message
+                showStatus(`데이터를 성공적으로 가져왔습니다. ${data.tests.length}개의 테스트 항목을 찾았습니다.`, 'success');
 
             } catch (error) {
                 console.error("Fetch Error:", error);
-                alert("데이터를 가져오는 중 오류가 발생했습니다. 다시 시도해주세요.");
+                
+                let errorMessage = "데이터를 가져오는 중 오류가 발생했습니다.";
+                
+                if (error.message.includes('timeout')) {
+                    errorMessage = "웹사이트 응답이 너무 느립니다. 잠시 후 다시 시도해주세요.";
+                } else if (error.message.includes('404')) {
+                    errorMessage = "해당 Lot 번호에 대한 데이터를 찾을 수 없습니다.";
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = "서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요.";
+                } else {
+                    errorMessage = error.message;
+                }
+                
+                showStatus(errorMessage, 'error');
             } finally {
-                searchButton.textContent = originalButtonText;
+                showLoading(false);
+            }
+        }
+
+        // Status message functions
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('searchStatus');
+            const className = type === 'success' ? 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative' : 
+                             type === 'error' ? 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative' : 
+                             'bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative';
+            
+            statusDiv.innerHTML = `<div class="${className}" role="alert">${message}</div>`;
+        }
+
+        function clearStatus() {
+            const statusDiv = document.getElementById('searchStatus');
+            statusDiv.innerHTML = '';
+        }
+
+        function showLoading(show) {
+            const buttonText = document.getElementById('buttonText');
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const searchButton = document.getElementById('duksanSearchButton');
+            
+            if (show) {
+                buttonText.textContent = '조회 중...';
+                loadingSpinner.classList.remove('hidden');
+                searchButton.disabled = true;
+            } else {
+                buttonText.textContent = '덕산 데이터 자동 조회';
+                loadingSpinner.classList.add('hidden');
                 searchButton.disabled = false;
             }
         }
 
+        // Enter key support for the search input
         document.getElementById('duksanLotNumberInput').addEventListener('keyup', function(event) {
             if (event.key === 'Enter') {
                 searchAndPopulateDuksanData();
             }
         });
-        
+
         /**
          * Calculates a date string in YYYY-MM-DD format.
          * @param {string} baseDateStr - The starting date in 'YYYY-MM-DD' format.
