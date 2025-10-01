@@ -2,8 +2,8 @@
   "name": "coa-transfer",
   "version": "1.0.0",
   "dependencies": {
-    "@sparticuz/chromium": "^123.0.1",
-    "puppeteer-core": "^22.10.0",
+    "@playwright/test": "^1.40.0",
+    "playwright-core": "^1.40.0",
     "cheerio": "^1.0.0-rc.12"
   },
   "engines": {
