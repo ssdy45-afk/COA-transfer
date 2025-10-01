@@ -29,13 +29,20 @@ module.exports = async (req, res) => {
       {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+          'Origin': 'https://www.duksan.kr',
+          'Referer': 'https://www.duksan.kr/product/pro_lot_search.php'
         },
-        timeout: 10000
+        timeout: 15000,
+        maxRedirects: 5
       }
     );
 
-    console.log("Response received, parsing results...");
+    console.log("Response received, status:", response.status);
+    console.log("Parsing results...");
+
     const $ = cheerio.load(response.data);
     const results = [];
 
@@ -54,8 +61,12 @@ module.exports = async (req, res) => {
     });
 
     // 결과 없음 확인
-    if (results.length === 0 && response.data.includes("lot_no를 확인하여 주십시요")) {
-      console.log("No results found");
+    if (results.length === 0) {
+      if (response.data.includes("lot_no를 확인하여 주십시요")) {
+        console.log("No results found - specific message detected");
+      } else {
+        console.log("No results found in table");
+      }
       return res.status(200).json([]);
     }
 
@@ -64,10 +75,22 @@ module.exports = async (req, res) => {
     res.status(200).json(results);
 
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      lot_no: lot_no
+    });
+
+    // 더 상세한 에러 정보
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response headers:', error.response.headers);
+    }
+
     res.status(500).json({ 
       error: 'Processing failed',
-      message: error.message
+      message: error.message,
+      suggestion: 'Please check the lot number and try again'
     });
   }
 };
