@@ -2,19 +2,20 @@ const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
 const cheerio = require('cheerio');
 
-// ★★★ 최종 수정: 서버리스 환경 최적화 모드 적용 ★★★
+// ★★★ 최종 수정: 가장 안정적인 라이브러리 버전과 함께, 서버리스 환경에 최적화된 실행 방식을 사용합니다. ★★★
 async function getBrowserInstance() {
-  // 그래픽/사운드 등 불필요한 기능을 비활성화하여 서버 환경과의 호환성을 극대화합니다.
-  chromium.setHeadlessMode = true;
-  chromium.setGraphicsMode = false;
-
   const executablePath = await chromium.executablePath();
+
+  // executablePath가 없으면 브라우저를 실행할 수 없으므로 오류를 발생시킵니다.
+  if (!executablePath) {
+    throw new Error("Chromium executable not found.");
+  }
 
   return puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
     executablePath: executablePath,
-    headless: true, // "new" 대신 구형 headless 모드를 사용하여 호환성을 높입니다.
+    headless: 'new', // 최신 headless 모드를 사용합니다.
     ignoreHTTPSErrors: true,
   });
 }
@@ -28,13 +29,14 @@ module.exports = async (req, res) => {
 
   let browser = null;
   try {
-    console.log("헤드리스 브라우저 실행 시작 (서버리스 최적화 모드)...");
+    console.log("헤드리스 브라우저 실행 시작 (안정 버전)...");
     browser = await getBrowserInstance();
     const page = await browser.newPage();
     
     const targetUrl = 'https://www.duksan.kr/product/pro_lot_search.php';
     console.log(`페이지로 이동 중: ${targetUrl}`);
-    await page.goto(targetUrl, { waitUntil: 'networkidle2' });
+    // 네트워크 타임아웃을 30초로 늘려 안정성을 확보합니다.
+    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     console.log("페이지 로딩 완료.");
 
     console.log(`Lot 번호 입력: ${lot_no}`);
@@ -42,7 +44,8 @@ module.exports = async (req, res) => {
     
     console.log("검색 버튼 클릭 및 결과 페이지 대기...");
     await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle2' }),
+      // 네비게이션 타임아웃도 30초로 설정합니다.
+      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
       page.click('button.btn-lot-search'), 
     ]);
     console.log("결과 페이지 로딩 완료.");
