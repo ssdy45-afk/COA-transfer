@@ -25,7 +25,7 @@
                 left: 0;
                 top: 0;
                 width: 100%;
-                min-height: 98vh; /* Ensure it tries to fill the print page */
+                min-height: 98vh;
             }
             .no-print {
                 display: none;
@@ -69,10 +69,10 @@
             <div class="lg:w-1/3 bg-white p-6 rounded-lg shadow-lg no-print">
                 <h2 class="text-2xl font-semibold mb-3 border-b pb-2">데이터 입력</h2>
                 
-                <!-- Duksan Search Section (MODIFIED) -->
+                <!-- Duksan Search Section -->
                 <div class="mb-6 p-4 bg-gray-50 rounded-lg border">
                     <label for="duksanLotNumberInput" class="block text-md font-semibold text-gray-800 mb-2">Duksan LOT 번호 조회</label>
-                    <input type="text" id="duksanLotNumberInput" placeholder="LOT 번호를 입력하세요 (예: P95205)" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <input type="text" id="duksanLotNumberInput" placeholder="LOT 번호를 입력하세요 (예: P81202)" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                     <button id="duksanSearchButton" onclick="searchAndPopulateDuksanData()" class="mt-2 w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 flex items-center justify-center">
                         <span id="buttonText">덕산 데이터 자동 조회</span>
                         <svg id="loadingSpinner" class="hidden loading-spinner w-4 h-4 ml-2 text-white" fill="none" viewBox="0 0 24 24">
@@ -384,19 +384,32 @@
                 <div>
                     <label for="dataInput" class="block text-sm font-medium text-gray-700 mb-1">성적서 데이터</label>
                     <textarea id="dataInput" class="w-full h-60 border border-gray-300 rounded-md p-3 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" spellcheck="false">
-Methanol, ACS Grade [67-56-1]
-Product code. 2195 ACS Grade
-Lot-R54321
+Acetonitrile [75-05-8]
+Product code. 1698
+Lot-P81202
 TESTS	UNIT	SPECIFICATION	RESULTS
-Appearance	-	Clear, colorless liquid	Passes
-Assay (by GC)	%	≥ 99.8	99.9
-Color (APHA)	APHA	≤ 10	<10
-Water	%	≤ 0.1	0.05
-Residue after evaporation	ppm	≤ 10	2
-Carbonyl compounds	%	≤ 0.001	<0.001
-Substances darkened by H2SO4	-	Passes test	Passes
-Mfg. Date :2025-01-20
-Exp. Date :5 years after Mfg. Date
+Appearance	-	Clear, colorless liquid	Clear, colorless liquid
+Absorbance	Pass/Fail	Pass test	Pass test
+Assay	%	≥ 99.95	99.99
+Color	APHA	≤ 5	2
+Density at 25 Degrees C	GM/ML	Inclusive Between 0.775~0.780	0.777
+Evaporation residue	ppm	≤ 1	≤ 1
+Fluorescence Background	Pass/Fail	To pass test	Pass test
+Identification	Pass/Fail	To pass test	Pass test
+LC Gradient Suitability	Pass/Fail	To pass test	Pass test
+Optical Absorbance 190 nm	Abs.unit	≤ 1.00	0.45
+Optical Absorbance 195 nm	Abs.unit	≤ 0.15	0.11
+Optical Absorbance 200 nm	Abs.unit	≤ 0.07	0.03
+Optical Absorbance 205 nm	Abs.unit	≤ 0.05	0.02
+Optical Absorbance 210 nm	Abs.unit	≤ 0.04	0.018
+Optical Absorbance 220 nm	Abs.unit	≤ 0.02	0.009
+Optical Absorbance 254 nm	Abs.unit	≤ 0.01	0.002
+Refractive index @ 25 Deg C	-	Inclusive Between 1.3405~1.3425	1.342
+Titratable Acid	mEq/g	≤ 0.008	0.0006
+Titratable Base	mEq/g	≤ 0.0006	0.00001
+Water (H2O)	%	≤ 0.01	0.004
+Mfg. Date :2025-08-19
+Exp. Date :3 years after Mfg. Date
                     </textarea>
                 </div>
                 
@@ -501,10 +514,20 @@ Exp. Date :5 years after Mfg. Date
     <script>
         const HISTORY_KEY = 'coaGeneratorHistory';
 
+        // 제품 매핑 데이터베이스
+        const productMapping = {
+            'acetonitrile': { code: '1698', productNo: 'A998', description: 'Acetonitrile (ACN), HPLC Grade', retest: 3 },
+            'methanol': { code: '1704', productNo: 'A452', description: 'Methanol (Methyl alcohol), HPLC Grade', retest: 3 },
+            'methyl alcohol': { code: '1704', productNo: 'A452', description: 'Methanol (Methyl alcohol), HPLC Grade', retest: 3 },
+            'acetone': { code: '2672', productNo: 'A18', description: 'Acetone (Certified ACS), Fisher Chemical', retest: 5 },
+            'ethanol': { code: '2716', productNo: 'A9951', description: 'Ethanol, absolute, ACS Grade', retest: 5 },
+            'isopropanol': { code: '7954', productNo: 'A416', description: '2-Propanol, ACS Grade', retest: 5 },
+            '2-propanol': { code: '7954', productNo: 'A416', description: '2-Propanol, ACS Grade', retest: 5 }
+        };
+
         // ★★★ UPDATED: Serverless function integration ★★★
         async function searchAndPopulateDuksanData() {
             const lotInput = document.getElementById('duksanLotNumberInput');
-            const searchButton = document.getElementById('duksanSearchButton');
             const lotNumber = lotInput.value.trim();
 
             if (!lotNumber) {
@@ -537,37 +560,13 @@ Exp. Date :5 years after Mfg. Date
                     throw new Error("테스트 결과 데이터가 없습니다.");
                 }
 
-                // Format the fetched JSON data into the text format for the textarea
-                let formattedText = '';
-                
-                // Add product information - IMPROVED LOGIC
-                let productName = "Methyl Alcohol";
-                let productCode = "1704";
-                let casNumber = "67-56-1";
-                
-                // Try to detect product type from test data
-                if (data.tests.length > 0) {
-                    const firstTest = data.tests[0].test || '';
-                    if (firstTest.includes('Methanol') || firstTest.includes('Methyl Alcohol')) {
-                        productName = "Methyl Alcohol";
-                        productCode = "1704";
-                        casNumber = "67-56-1";
-                    } else if (firstTest.includes('Acetone')) {
-                        productName = "Acetone";
-                        productCode = "2672";
-                        casNumber = "67-64-1";
-                    } else if (firstTest.includes('Ethanol')) {
-                        productName = "Ethanol";
-                        productCode = "2716";
-                        casNumber = "64-17-5";
-                    } else if (firstTest.includes('Isopropanol') || firstTest.includes('2-Propanol')) {
-                        productName = "Isopropanol";
-                        productCode = "7954";
-                        casNumber = "67-63-0";
-                    }
-                }
-                
-                // Override with server data if available and valid
+                // 제품 정보 추출
+                let productName = "";
+                let productCode = "";
+                let casNumber = "";
+                let retestYears = 3; // 기본값
+
+                // API에서 제공하는 제품 정보 사용
                 if (data.product && data.product.name && data.product.name !== 'Unknown Product') {
                     productName = data.product.name;
                 }
@@ -577,9 +576,46 @@ Exp. Date :5 years after Mfg. Date
                 if (data.product && data.product.casNumber) {
                     casNumber = data.product.casNumber;
                 }
+
+                // 제품 이름으로 매핑 시도
+                if (productName) {
+                    const normalizedName = productName.toLowerCase().trim();
+                    for (const [key, value] of Object.entries(productMapping)) {
+                        if (normalizedName.includes(key)) {
+                            productCode = value.code;
+                            retestYears = value.retest;
+                            // 이미 API에서 가져온 제품 이름을 사용하거나 매핑된 설명 사용
+                            if (!data.product.name || data.product.name === 'Unknown Product') {
+                                productName = value.description;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // 테스트 데이터에서 제품 이름 감지 (백업)
+                if (!productName && data.tests.length > 0) {
+                    const firstTest = data.tests[0].test || '';
+                    const normalizedTest = firstTest.toLowerCase();
+                    for (const [key, value] of Object.entries(productMapping)) {
+                        if (normalizedTest.includes(key)) {
+                            productName = value.description;
+                            productCode = value.code;
+                            retestYears = value.retest;
+                            break;
+                        }
+                    }
+                }
+
+                // Format the fetched JSON data into the text format for the textarea
+                let formattedText = '';
                 
-                formattedText += `${productName} [${casNumber}]\n`;
-                formattedText += `Product code. ${productCode}\n`;
+                formattedText += `${productName || 'Chemical Product'} [${casNumber || 'N/A'}]\n`;
+                
+                if (productCode) {
+                    formattedText += `Product code. ${productCode}\n`;
+                }
+                
                 formattedText += `Lot-${lotNumber}\n`;
                 formattedText += 'TESTS\tUNIT\tSPECIFICATION\tRESULTS\n';
                 
@@ -594,7 +630,7 @@ Exp. Date :5 years after Mfg. Date
                 // Add manufacturing date if available from manual inputs or use current date
                 const currentDate = new Date().toISOString().split('T')[0];
                 formattedText += `Mfg. Date :${currentDate}\n`;
-                formattedText += `Exp. Date :5 years after Mfg. Date\n`;
+                formattedText += `Exp. Date :${retestYears} years after Mfg. Date\n`;
 
                 // Populate the textarea
                 document.getElementById('dataInput').value = formattedText;
@@ -604,7 +640,9 @@ Exp. Date :5 years after Mfg. Date
                     document.getElementById('manualDescription').value = productName;
                 }
                 if (productCode && !document.getElementById('manualProductNo').value) {
-                    document.getElementById('manualProductNo').value = productCode;
+                    // 제품 코드 대신 Product No. 사용
+                    const productNo = Object.values(productMapping).find(p => p.code === productCode)?.productNo || productCode;
+                    document.getElementById('manualProductNo').value = productNo;
                 }
                 
                 if (!document.getElementById('manualLotNumber').value) {
@@ -788,27 +826,17 @@ Exp. Date :5 years after Mfg. Date
             if (!parsedInfo.description && !manualInputs.description) {
                 // Try to auto-detect from test data
                 const firstLine = lines[0]?.toLowerCase() || '';
-                if (firstLine.includes('methanol') || firstLine.includes('methyl alcohol')) {
-                    parsedInfo.description = 'Methyl Alcohol';
-                    parsedInfo.casNumber = '67-56-1';
-                    if (!parsedInfo.productCode) parsedInfo.productCode = '1704';
-                } else if (firstLine.includes('acetone')) {
-                    parsedInfo.description = 'Acetone';
-                    parsedInfo.casNumber = '67-64-1';
-                    if (!parsedInfo.productCode) parsedInfo.productCode = '2672';
-                } else if (firstLine.includes('ethanol')) {
-                    parsedInfo.description = 'Ethanol';
-                    parsedInfo.casNumber = '64-17-5';
-                    if (!parsedInfo.productCode) parsedInfo.productCode = '2716';
-                } else if (firstLine.includes('isopropanol') || firstLine.includes('2-propanol')) {
-                    parsedInfo.description = 'Isopropanol';
-                    parsedInfo.casNumber = '67-63-0';
-                    if (!parsedInfo.productCode) parsedInfo.productCode = '7954';
+                for (const [key, value] of Object.entries(productMapping)) {
+                    if (firstLine.includes(key)) {
+                        parsedInfo.description = value.description;
+                        parsedInfo.productCode = value.code;
+                        break;
+                    }
                 }
             }
 
             // --- 4. Populate final values based on priority ---
-            elements.productNo.textContent = manualInputs.productNo || parsedInfo.productCode || (productFromDb ? productFromDb["Product No."] : '');
+            elements.productNo.textContent = manualInputs.productNo || (productFromDb ? productFromDb["Product No."] : '') || parsedInfo.productCode;
             elements.description.textContent = manualInputs.description || parsedInfo.description || (productFromDb ? productFromDb["Description"] : '');
             elements.lotNumber.textContent = manualInputs.lotNumber || parsedInfo.lotNumber;
             elements.casNumber.textContent = parsedInfo.casNumber;
@@ -824,11 +852,20 @@ Exp. Date :5 years after Mfg. Date
                       const years = parseInt(yearsMatch[1], 10);
                       finalRetestDate = calculateRetestDate(parsedInfo.mfgDate, years);
                   } else {
-                      finalRetestDate = parsedInfo.expDateText; // If not 'X years...', show as is
+                      finalRetestDate = parsedInfo.expDateText;
                   }
             } else if (productFromDb && parsedInfo.mfgDate) {
                 const years = parseInt(productFromDb["Retest date"], 10);
                 finalRetestDate = calculateRetestDate(parsedInfo.mfgDate, years);
+            } else if (parsedInfo.description) {
+                // Try to get retest years from product mapping
+                const normalizedDesc = parsedInfo.description.toLowerCase();
+                for (const [key, value] of Object.entries(productMapping)) {
+                    if (normalizedDesc.includes(key) && parsedInfo.mfgDate) {
+                        finalRetestDate = calculateRetestDate(parsedInfo.mfgDate, value.retest);
+                        break;
+                    }
+                }
             }
             elements.retestDate.textContent = finalRetestDate;
 
@@ -922,7 +959,6 @@ Exp. Date :5 years after Mfg. Date
         }
 
         function clearHistory() {
-            // Replaced confirm with a non-blocking alert for iframe compatibility
             if (confirm('Are you sure you want to clear all history? This cannot be undone.')) {
                  localStorage.removeItem(HISTORY_KEY);
                  loadHistoryDisplay();
