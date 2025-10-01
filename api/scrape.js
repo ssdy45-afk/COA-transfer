@@ -1,20 +1,14 @@
-const chromium = require('chrome-aws-lambda');
+const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer-core');
 const cheerio = require('cheerio');
 
-// Vercel 서버 환경에 최적화된 Puppeteer 실행 함수
+// 최신 라이브러리를 사용하여 Vercel 환경에 최적화된 브라우저 실행
 async function getBrowserInstance() {
-  const executablePath = await chromium.executablePath;
-  if (!executablePath) {
-    // 로컬 환경에서의 테스트를 위한 폴백
-    const puppeteer = require('puppeteer');
-    return puppeteer.launch({ args: chromium.args });
-  }
-
-  return chromium.puppeteer.launch({
+  return puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
-    executablePath,
-    headless: chromium.headless,
+    executablePath: await chromium.executablePath(),
+    headless: "new", // 새로운 headless 모드 사용
     ignoreHTTPSErrors: true,
   });
 }
@@ -28,7 +22,7 @@ module.exports = async (req, res) => {
 
   let browser = null;
   try {
-    console.log("헤드리스 브라우저 실행 시작...");
+    console.log("헤드리스 브라우저 실행 시작 (최신 라이브러리 사용)...");
     browser = await getBrowserInstance();
     const page = await browser.newPage();
     
@@ -84,7 +78,7 @@ module.exports = async (req, res) => {
     res.status(200).json(results);
 
   } catch (error) {
-    console.error('헤드리스 브라우저 처리 중 심각한 오류 발생:', error.message);
+    console.error('헤드리스 브라우저 처리 중 최종 오류 발생:', error.message);
     res.status(500).json({ error: 'Failed to process the request with headless browser.', details: error.message });
   } finally {
     if (browser !== null) {
@@ -93,3 +87,4 @@ module.exports = async (req, res) => {
     }
   }
 };
+
