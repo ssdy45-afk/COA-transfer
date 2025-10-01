@@ -1,47 +1,15 @@
-const chromium = require('@sparticuz/chromium');
-const puppeteer = require('puppeteer-core');
+const { chromium } = require('playwright-core');
 const cheerio = require('cheerio');
-
-async function getBrowserInstance() {
-  console.log("Launching Puppeteer with @sparticuz/chromium (Vercel optimized)...");
-
-  try {
-    const executablePath = await chromium.executablePath();
-    console.log("Executable path found:", !!executablePath);
-
-    if (!executablePath) {
-      throw new Error('Chromium executable not found via @sparticuz/chromium');
-    }
-
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: executablePath,
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true,
-    });
-    
-    console.log("Puppeteer launched successfully with @sparticuz/chromium");
-    return browser;
-  } catch (error) {
-    console.error("Browser launch error:", error);
-    throw error;
-  }
-}
 
 module.exports = async (req, res) => {
   // CORS 설정
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*'); 
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
-  }
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const { lot_no } = req.query;
@@ -55,59 +23,58 @@ module.exports = async (req, res) => {
   let page = null;
 
   try {
-    console.log("Starting browser instance...");
-    browser = await getBrowserInstance();
-    page = await browser.newPage();
-
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36');
+    console.log("Starting browser instance with Playwright...");
     
-    await page.setRequestInterception(true);
-    page.on('request', (request) => {
-      if (['image', 'font', 'stylesheet', 'media'].includes(request.resourceType())) {
-        request.abort();
-      } else {
-        request.continue();
-      }
+    // Playwright 브라우저 실행
+    browser = await chromium.launch({
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
     });
-
-    page.setDefaultNavigationTimeout(30000);
-    page.setDefaultTimeout(20000);
+    
+    page = await browser.newPage();
+    
+    // 타임아웃 설정
+    page.setDefaultTimeout(15000);
+    page.setDefaultNavigationTimeout(20000);
 
     const targetUrl = 'https://www.duksan.kr/product/pro_lot_search.php';
     console.log(`Navigating to: ${targetUrl}`);
 
-    const response = await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-    if (!response || !response.ok()) {
-      throw new Error(`Page load failed: ${response ? response.status() : 'no response'}`);
-    }
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
     console.log("Page loaded successfully");
 
-    await page.waitForSelector('input[name="lot_no"]', { timeout: 10000 });
-    await page.focus('input[name="lot_no"]');
-    await page.keyboard.type(lot_no, { delay: 50 });
+    // 입력 필드에 값 설정
+    await page.fill('input[name="lot_no"]', lot_no);
+    console.log("Lot number filled");
 
+    // 검색 실행
     console.log("Clicking search button...");
-    const navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
-    await page.click('button.btn-lot-search');
-    await navigationPromise;
-    console.log("Search completed, parsing results...");
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+      page.click('button.btn-lot-search')
+    ]);
 
+    console.log("Search completed, parsing results...");
     const content = await page.content();
+
+    // 결과 분석
     if (content.includes("lot_no를 확인하여 주십시요")) {
-      console.log("No results found for the given lot_no.");
+      console.log("No results found");
       return res.status(200).json([]);
     }
 
     const $ = cheerio.load(content);
     const results = [];
-    const table = $('div.box-body table.table-lot-view');
 
-    if (table.length === 0) {
-      console.log("Result table not found on the page.");
-      return res.status(200).json([]);
-    }
-
-    table.find('tbody tr').each((index, element) => {
+    $('div.box-body table.table-lot-view tbody tr').each((index, element) => {
       const $cells = $(element).find('td');
       if ($cells.length === 5) {
         results.push({
@@ -119,16 +86,18 @@ module.exports = async (req, res) => {
         });
       }
     });
-    console.log(`Found ${results.length} results.`);
 
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
+    console.log(`Found ${results.length} results`);
     res.status(200).json(results);
 
   } catch (error) {
-    console.error('Error details:', error.message);
-    res.status(500).json({ error: 'Processing failed', message: error.message });
+    console.error('Error:', error.message);
+    res.status(500).json({ 
+      error: 'Processing failed',
+      message: error.message
+    });
   } finally {
-    if (page) await page.close().catch(e => console.error("Error closing page:", e));
-    if (browser) await browser.close().catch(e => console.error("Error closing browser:", e));
+    if (page) await page.close().catch(console.error);
+    if (browser) await browser.close().catch(console.error);
   }
 };
