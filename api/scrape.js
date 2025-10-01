@@ -20,40 +20,65 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'lot_no query parameter is required' });
   }
 
-  // Lot 번호 유효성 검사
   if (!/^[A-Z0-9]+$/.test(lot_no)) {
     return res.status(400).json({ error: 'Invalid lot number format' });
   }
 
   try {
-    console.log("Fetching analysis certificate with optimized settings...");
+    console.log("Fetching analysis certificate...");
     
-    const url = `https://www.duksan.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
-    console.log("Target URL:", url);
+    const targetUrl = `https://www.duksan.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
+    console.log("Target URL:", targetUrl);
+
+    // 프록시 URL (CORS-anywhere) - 공개 프록시 사용
+    const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + targetUrl;
+    // 참고: CORS-anywhere는 데모 서버로, production에서는 사용하지 않는 것이 좋습니다.
+    // 대체 프록시: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl)
 
     // 최적화된 HTTPS agent
     const httpsAgent = new https.Agent({
-      keepAlive: false, // keep-alive 비활성화 (연결 재사용 안함)
-      timeout: 8000,
-      rejectUnauthorized: false, // SSL 인증서 검증 무시
+      keepAlive: false,
+      timeout: 10000, // 10초
+      rejectUnauthorized: false,
     });
 
-    const response = await axios.get(url, {
+    // 요청 설정
+    const config = {
       httpsAgent: httpsAgent,
-      timeout: 8000, // 8초 타임아웃
+      timeout: 10000, // 10초 타임아웃
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
         'Cache-Control': 'no-cache',
-        'Connection': 'close', // 연결 즉시 종료
+        'Connection': 'close',
         'Pragma': 'no-cache',
       },
       maxRedirects: 3,
       validateStatus: function (status) {
-        return status >= 200 && status < 500; // 404도 성공으로 처리
+        return status >= 200 && status < 500;
       }
-    });
+    };
+
+    // 직접 요청 시도
+    let response;
+    try {
+      response = await axios.get(targetUrl, config);
+    } catch (directError) {
+      console.log('Direct request failed, trying proxy...', directError.message);
+      // 직접 요청 실패 시 프록시 시도
+      try {
+        response = await axios.get(proxyUrl, {
+          ...config,
+          headers: {
+            ...config.headers,
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+      } catch (proxyError) {
+        throw new Error(`Direct and proxy requests failed: ${directError.message}, ${proxyError.message}`);
+      }
+    }
 
     console.log("Response received, status:", response.status);
     console.log("Content length:", response.data.length);
@@ -73,7 +98,6 @@ module.exports = async (req, res) => {
     const $ = cheerio.load(response.data);
     const results = [];
 
-    // 테이블 데이터 추출
     $('table tr').each((index, element) => {
       const $row = $(element);
       const $cells = $row.find('td');
@@ -86,19 +110,16 @@ module.exports = async (req, res) => {
           result: $cells.eq(3).text().trim(),
         };
         
-        // 빈 행이 아닌 경우만 추가
         if (rowData.test && rowData.result) {
           results.push(rowData);
         }
       }
     });
 
-    // 제품 정보 추출
     const productName = $('h1:contains("Certificate of Analysis")').next('h2').text().trim() || 
                        $('h2:contains("Certificate of Analysis")').next('h3').text().trim() ||
                        'Unknown Product';
 
-    // Product code 찾기
     let productCode = '';
     $('strong').each((i, el) => {
       const text = $(el).text();
@@ -133,7 +154,6 @@ module.exports = async (req, res) => {
       code: error.code
     });
 
-    // 타임아웃 에러인 경우
     if (error.code === 'ECONNABORTED') {
       return res.status(408).json({ 
         success: false,
@@ -143,7 +163,6 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 연결 관련 에러
     if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
       return res.status(503).json({ 
         success: false,
