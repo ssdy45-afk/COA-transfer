@@ -1,41 +1,27 @@
-const chromium = require('chrome-aws-lambda');
+const chromium = require('@sparticuz/chromium-min');
 const puppeteer = require('puppeteer-core');
 const cheerio = require('cheerio');
 
 async function getBrowserInstance() {
-  console.log("Launching Puppeteer with chrome-aws-lambda...");
-  
+  console.log("Launching Puppeteer with @sparticuz/chromium-min...");
+
   try {
-    // Chromium 실행 경로 명시적 확인 (오타 수정)
-    const executablePath = await chromium.executablePath;
-    console.log("Executable path available:", !!executablePath);
-    
+    const executablePath = await chromium.executablePath();
+    console.log("Executable path found:", !!executablePath);
+
     if (!executablePath) {
-      throw new Error('Chromium executable not found');
+      throw new Error('Chromium executable not found via @sparticuz/chromium-min');
     }
 
     const browser = await puppeteer.launch({
-      args: [
-        ...chromium.args,
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ],
-      defaultViewport: {
-        width: 1280,
-        height: 720
-      },
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
       executablePath: executablePath,
-      headless: true,
+      headless: chromium.headless,
       ignoreHTTPSErrors: true,
     });
     
-    console.log("Puppeteer launched successfully");
+    console.log("Puppeteer launched successfully with @sparticuz/chromium-min");
     return browser;
   } catch (error) {
     console.error("Browser launch error:", error);
@@ -46,7 +32,7 @@ async function getBrowserInstance() {
 module.exports = async (req, res) => {
   // CORS 설정
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', '*'); 
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -62,9 +48,7 @@ module.exports = async (req, res) => {
   console.log("Received request for lot_no:", lot_no);
 
   if (!lot_no) {
-    return res.status(400).json({ 
-      error: 'lot_no query parameter is required'
-    });
+    return res.status(400).json({ error: 'lot_no query parameter is required' });
   }
 
   let browser = null;
@@ -75,80 +59,56 @@ module.exports = async (req, res) => {
     browser = await getBrowserInstance();
     page = await browser.newPage();
 
-    // User-Agent 설정
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-
-    // 리소스 제한
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36');
+    
     await page.setRequestInterception(true);
     page.on('request', (request) => {
-      const resourceType = request.resourceType();
-      if (['image', 'font', 'stylesheet', 'media'].includes(resourceType)) {
+      if (['image', 'font', 'stylesheet', 'media'].includes(request.resourceType())) {
         request.abort();
       } else {
         request.continue();
       }
     });
 
-    // 타임아웃 설정
-    page.setDefaultNavigationTimeout(25000);
-    page.setDefaultTimeout(15000);
+    page.setDefaultNavigationTimeout(30000);
+    page.setDefaultTimeout(20000);
 
     const targetUrl = 'https://www.duksan.kr/product/pro_lot_search.php';
     console.log(`Navigating to: ${targetUrl}`);
 
-    const response = await page.goto(targetUrl, { 
-      waitUntil: 'networkidle2',
-      timeout: 25000
-    });
-
+    const response = await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     if (!response || !response.ok()) {
       throw new Error(`Page load failed: ${response ? response.status() : 'no response'}`);
     }
-
     console.log("Page loaded successfully");
 
-    // 입력 필드 대기 및 값 설정
     await page.waitForSelector('input[name="lot_no"]', { timeout: 10000 });
     await page.focus('input[name="lot_no"]');
-    await page.keyboard.type(lot_no, { delay: 100 });
+    await page.keyboard.type(lot_no, { delay: 50 });
 
-    // 입력값 확인
-    const inputValue = await page.$eval('input[name="lot_no"]', el => el.value);
-    console.log("Input value confirmed:", inputValue);
-
-    // 검색 실행
     console.log("Clicking search button...");
-    
-    const navigationPromise = page.waitForNavigation({
-      waitUntil: 'networkidle2',
-      timeout: 25000
-    });
-
+    const navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
     await page.click('button.btn-lot-search');
     await navigationPromise;
-
     console.log("Search completed, parsing results...");
-    const content = await page.content();
 
-    // 결과 분석
+    const content = await page.content();
     if (content.includes("lot_no를 확인하여 주십시요")) {
-      console.log("No results found");
+      console.log("No results found for the given lot_no.");
       return res.status(200).json([]);
     }
 
     const $ = cheerio.load(content);
     const results = [];
-
     const table = $('div.box-body table.table-lot-view');
+
     if (table.length === 0) {
-      console.log("No result table found");
+      console.log("Result table not found on the page.");
       return res.status(200).json([]);
     }
 
     table.find('tbody tr').each((index, element) => {
-      const $row = $(element);
-      const $cells = $row.find('td');
-
+      const $cells = $(element).find('td');
       if ($cells.length === 5) {
         results.push({
           item: $cells.eq(0).text().trim(),
@@ -159,32 +119,16 @@ module.exports = async (req, res) => {
         });
       }
     });
-
-    console.log(`Found ${results.length} results`);
+    console.log(`Found ${results.length} results.`);
 
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
     res.status(200).json(results);
 
   } catch (error) {
     console.error('Error details:', error.message);
-
-    res.status(500).json({ 
-      error: 'Processing failed',
-      message: error.message
-    });
-
+    res.status(500).json({ error: 'Processing failed', message: error.message });
   } finally {
-    // 리소스 정리
-    try {
-      if (page) await page.close();
-    } catch (e) {
-      console.error("Error closing page:", e);
-    }
-    
-    try {
-      if (browser) await browser.close();
-    } catch (e) {
-      console.error("Error closing browser:", e);
-    }
+    if (page) await page.close().catch(e => console.error("Error closing page:", e));
+    if (browser) await browser.close().catch(e => console.error("Error closing browser:", e));
   }
 };
