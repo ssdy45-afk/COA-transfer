@@ -1,25 +1,18 @@
-const chromium = require('@sparticuz/chromium');
+const chromium = require('chrome-aws-lambda');
 const puppeteer = require('puppeteer-core');
 const cheerio = require('cheerio');
 
-// Chromium 옵션 설정 (필요에 따라 다운로드 제외)
-chromium.setHeadlessMode = true;
-chromium.setGraphicsMode = false;
-
 async function getBrowserInstance() {
-  console.log("Launching Puppeteer with chromium...");
-
-  const executablePath = await chromium.executablePath();
-  console.log("Executable path:", executablePath);
-
+  console.log("Launching Puppeteer with chrome-aws-lambda...");
+  
   const browser = await puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
-    executablePath: executablePath,
+    executablePath: await chromium.executablePath(),
     headless: chromium.headless,
     ignoreHTTPSErrors: true,
   });
-
+  
   console.log("Puppeteer launched successfully");
   return browser;
 }
