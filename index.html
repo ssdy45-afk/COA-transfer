@@ -540,15 +540,46 @@ Exp. Date :5 years after Mfg. Date
                 // Format the fetched JSON data into the text format for the textarea
                 let formattedText = '';
                 
-                // Add product information if available
-                if (data.product && data.product.name) {
-                    formattedText += `${data.product.name}`;
-                    if (data.product.code) {
-                        formattedText += ` [${data.product.code}]`;
+                // Add product information - IMPROVED LOGIC
+                let productName = "Methyl Alcohol";
+                let productCode = "1704";
+                let casNumber = "67-56-1";
+                
+                // Try to detect product type from test data
+                if (data.tests.length > 0) {
+                    const firstTest = data.tests[0].test || '';
+                    if (firstTest.includes('Methanol') || firstTest.includes('Methyl Alcohol')) {
+                        productName = "Methyl Alcohol";
+                        productCode = "1704";
+                        casNumber = "67-56-1";
+                    } else if (firstTest.includes('Acetone')) {
+                        productName = "Acetone";
+                        productCode = "2672";
+                        casNumber = "67-64-1";
+                    } else if (firstTest.includes('Ethanol')) {
+                        productName = "Ethanol";
+                        productCode = "2716";
+                        casNumber = "64-17-5";
+                    } else if (firstTest.includes('Isopropanol') || firstTest.includes('2-Propanol')) {
+                        productName = "Isopropanol";
+                        productCode = "7954";
+                        casNumber = "67-63-0";
                     }
-                    formattedText += '\n';
                 }
                 
+                // Override with server data if available and valid
+                if (data.product && data.product.name && data.product.name !== 'Unknown Product') {
+                    productName = data.product.name;
+                }
+                if (data.product && data.product.code) {
+                    productCode = data.product.code;
+                }
+                if (data.product && data.product.casNumber) {
+                    casNumber = data.product.casNumber;
+                }
+                
+                formattedText += `${productName} [${casNumber}]\n`;
+                formattedText += `Product code. ${productCode}\n`;
                 formattedText += `Lot-${lotNumber}\n`;
                 formattedText += 'TESTS\tUNIT\tSPECIFICATION\tRESULTS\n';
                 
@@ -568,14 +599,12 @@ Exp. Date :5 years after Mfg. Date
                 // Populate the textarea
                 document.getElementById('dataInput').value = formattedText;
                 
-                // Auto-fill manual inputs if product data is available
-                if (data.product) {
-                    if (data.product.name && !document.getElementById('manualDescription').value) {
-                        document.getElementById('manualDescription').value = data.product.name;
-                    }
-                    if (data.product.code && !document.getElementById('manualProductNo').value) {
-                        document.getElementById('manualProductNo').value = data.product.code;
-                    }
+                // Auto-fill manual inputs
+                if (productName && !document.getElementById('manualDescription').value) {
+                    document.getElementById('manualDescription').value = productName;
+                }
+                if (productCode && !document.getElementById('manualProductNo').value) {
+                    document.getElementById('manualProductNo').value = productCode;
                 }
                 
                 if (!document.getElementById('manualLotNumber').value) {
@@ -662,7 +691,7 @@ Exp. Date :5 years after Mfg. Date
                 date.setFullYear(date.getFullYear() + yearsToAdd);
                 const year = date.getFullYear();
                 const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate() - 1).padStart(2, '0'); // Corrected day calculation
+                const day = String(date.getDate()).padStart(2, '0');
                 return `${year}-${month}-${day}`;
             } catch (e) {
                 console.error("Error calculating date:", e);
@@ -743,9 +772,32 @@ Exp. Date :5 years after Mfg. Date
                 productFromDb = productDatabase.find(p => String(p["Product code"]) === parsedInfo.productCode);
             }
 
-            // --- 3. Populate final values based on priority ---
-            elements.productNo.textContent = manualInputs.productNo || (productFromDb ? productFromDb["Product No."] : '');
-            elements.description.textContent = manualInputs.description || (productFromDb ? productFromDb["Description"] : parsedInfo.description);
+            // --- 3. Auto-detect product information if missing ---
+            if (!parsedInfo.description && !manualInputs.description) {
+                // Try to auto-detect from test data
+                const firstLine = lines[0]?.toLowerCase() || '';
+                if (firstLine.includes('methanol') || firstLine.includes('methyl alcohol')) {
+                    parsedInfo.description = 'Methyl Alcohol';
+                    parsedInfo.casNumber = '67-56-1';
+                    if (!parsedInfo.productCode) parsedInfo.productCode = '1704';
+                } else if (firstLine.includes('acetone')) {
+                    parsedInfo.description = 'Acetone';
+                    parsedInfo.casNumber = '67-64-1';
+                    if (!parsedInfo.productCode) parsedInfo.productCode = '2672';
+                } else if (firstLine.includes('ethanol')) {
+                    parsedInfo.description = 'Ethanol';
+                    parsedInfo.casNumber = '64-17-5';
+                    if (!parsedInfo.productCode) parsedInfo.productCode = '2716';
+                } else if (firstLine.includes('isopropanol') || firstLine.includes('2-propanol')) {
+                    parsedInfo.description = 'Isopropanol';
+                    parsedInfo.casNumber = '67-63-0';
+                    if (!parsedInfo.productCode) parsedInfo.productCode = '7954';
+                }
+            }
+
+            // --- 4. Populate final values based on priority ---
+            elements.productNo.textContent = manualInputs.productNo || parsedInfo.productCode || (productFromDb ? productFromDb["Product No."] : '');
+            elements.description.textContent = manualInputs.description || parsedInfo.description || (productFromDb ? productFromDb["Description"] : '');
             elements.lotNumber.textContent = manualInputs.lotNumber || parsedInfo.lotNumber;
             elements.casNumber.textContent = parsedInfo.casNumber;
             elements.releaseDate.textContent = parsedInfo.mfgDate;
@@ -768,7 +820,7 @@ Exp. Date :5 years after Mfg. Date
             }
             elements.retestDate.textContent = finalRetestDate;
 
-            // --- 4. Populate table ---
+            // --- 5. Populate table ---
             let isTableData = false;
             lines.forEach(line => {
                 if (line.toLowerCase().startsWith('tests\tunit\tspecification\tresults')) {
@@ -788,7 +840,7 @@ Exp. Date :5 years after Mfg. Date
                 }
             });
 
-            // --- 5. Save to history ---
+            // --- 6. Save to history ---
             if (saveToHistory) {
                 const historyEntry = {
                     rawData: rawData,
