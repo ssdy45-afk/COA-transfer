@@ -6,7 +6,7 @@
     "cheerio": "^1.0.0-rc.12"
   },
   "scripts": {
-    "postinstall": "npx playwright install --with-deps chromium"
+    "postinstall": "npx playwright install chromium"
   },
   "engines": {
     "node": ">=18"
