@@ -2,7 +2,7 @@
   "name": "coa-transfer",
   "version": "1.0.0",
   "dependencies": {
-    "chrome-aws-lambda": "^10.1.0",
+    "@sparticuz/chromium-min": "^119.0.1",
     "puppeteer-core": "^21.5.2",
     "cheerio": "^1.0.0-rc.12"
   },
