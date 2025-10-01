@@ -1,9 +1,12 @@
 {
-  "name": "coa-scraper",
+  "name": "coa-transfer",
   "version": "1.0.0",
   "dependencies": {
-    "@sparticuz/chromium": "111.0.0",
-    "cheerio": "^1.0.0-rc.12",
-    "puppeteer-core": "19.7.2"
+    "@sparticuz/chromium-min": "^119.0.1",
+    "puppeteer-core": "^21.5.2",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
