@@ -1,4 +1,4 @@
-const { chromium } = require('playwright'); // 'playwright-core'에서 'playwright'로 변경
+const axios = require('axios');
 const cheerio = require('cheerio');
 
 module.exports = async (req, res) => {
@@ -19,61 +19,53 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'lot_no query parameter is required' });
   }
 
-  let browser = null;
-  let page = null;
-
   try {
-    console.log("Starting browser instance with Playwright...");
+    console.log("Step 1: Getting search page...");
     
-    // Playwright 브라우저 실행
-    browser = await chromium.launch({
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ]
+    // 먼저 검색 페이지를 GET으로 가져와서 필요한 정보 확인
+    const getResponse = await axios.get('https://www.duksan.kr/product/pro_lot_search.php', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      },
+      timeout: 10000,
     });
+
+    console.log("GET page status:", getResponse.status);
     
-    page = await browser.newPage();
+    // 쿠키 저장 (세션 유지)
+    const cookies = getResponse.headers['set-cookie'];
     
-    // 타임아웃 설정
-    page.setDefaultTimeout(15000);
-    page.setDefaultNavigationTimeout(20000);
+    console.log("Step 2: Submitting search form...");
+    
+    // POST 요청으로 검색
+    const postResponse = await axios.post(
+      'https://www.duksan.kr/product/pro_lot_search.php',
+      `lot_no=${encodeURIComponent(lot_no)}`,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Origin': 'https://www.duksan.kr',
+          'Referer': 'https://www.duksan.kr/product/pro_lot_search.php',
+          'Cookie': cookies ? cookies.join('; ') : '',
+        },
+        timeout: 15000,
+        maxRedirects: 0, // 리다이렉트 자동 추적 안함
+        validateStatus: function (status) {
+          return status >= 200 && status < 400; // 리다이렉트 상태코드도 허용
+        }
+      }
+    );
 
-    const targetUrl = 'https://www.duksan.kr/product/pro_lot_search.php';
-    console.log(`Navigating to: ${targetUrl}`);
+    console.log("POST response status:", postResponse.status);
+    console.log("Response URL:", postResponse.request?.res?.responseUrl);
 
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
-    console.log("Page loaded successfully");
-
-    // 입력 필드에 값 설정
-    await page.fill('input[name="lot_no"]', lot_no);
-    console.log("Lot number filled");
-
-    // 검색 실행
-    console.log("Clicking search button...");
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-      page.click('button.btn-lot-search')
-    ]);
-
-    console.log("Search completed, parsing results...");
-    const content = await page.content();
-
-    // 결과 분석
-    if (content.includes("lot_no를 확인하여 주십시요")) {
-      console.log("No results found");
-      return res.status(200).json([]);
-    }
-
-    const $ = cheerio.load(content);
+    const $ = cheerio.load(postResponse.data);
     const results = [];
 
+    // 결과 테이블 파싱
     $('div.box-body table.table-lot-view tbody tr').each((index, element) => {
       const $cells = $(element).find('td');
       if ($cells.length === 5) {
@@ -87,17 +79,33 @@ module.exports = async (req, res) => {
       }
     });
 
+    // 결과 없음 확인
+    if (results.length === 0) {
+      if (postResponse.data.includes("lot_no를 확인하여 주십시요")) {
+        console.log("No results found - specific message detected");
+      } else {
+        console.log("No results found in table");
+      }
+      return res.status(200).json([]);
+    }
+
     console.log(`Found ${results.length} results`);
+    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
     res.status(200).json(results);
 
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      lot_no: lot_no,
+      responseStatus: error.response?.status,
+      responseHeaders: error.response?.headers
+    });
+
     res.status(500).json({ 
       error: 'Processing failed',
-      message: error.message
+      message: error.message,
+      suggestion: 'The website might have changed or requires JavaScript execution'
     });
-  } finally {
-    if (page) await page.close().catch(console.error);
-    if (browser) await browser.close().catch(console.error);
   }
 };
