@@ -5,8 +5,9 @@ const cheerio = require('cheerio');
 // ★★★ 최종 수정: 최신 라이브러리 및 Vercel 환경을 위한 '안전모드' 실행 옵션 적용 ★★★
 async function getBrowserInstance() {
   console.log("Locating Chromium executable path...");
-  const executablePath = await chromium.executablePath();
-  console.log(`Executable path found: ${executablePath ? 'Yes' : 'No'}`);
+  // Vercel 환경에서는 특정 경로에 브라우저가 위치하므로, 해당 경로를 직접 지정해줄 수 있습니다.
+  const executablePath = await chromium.executablePath() || '/usr/bin/chromium-browser';
+  console.log(`Executable path found: ${executablePath}`);
 
   if (!executablePath) {
     throw new Error("Chromium executable not found. The library might have failed to download it.");
@@ -104,3 +105,4 @@ module.exports = async (req, res) => {
     }
   }
 };
+
