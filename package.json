@@ -2,8 +2,8 @@
   "name": "coa-scraper",
   "version": "1.0.0",
   "dependencies": {
-    "@sparticuz/chromium": "111.0.0",
+    "@sparticuz/chromium": "^123.0.1",
     "cheerio": "^1.0.0-rc.12",
-    "puppeteer-core": "20.5.0"
+    "puppeteer-core": "^22.10.0"
   }
 }
