@@ -2,13 +2,19 @@ const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
 const cheerio = require('cheerio');
 
-// 최신 라이브러리를 사용하여 Vercel 환경에 최적화된 브라우저 실행
+// ★★★ 최종 수정: 서버리스 환경 최적화 모드 적용 ★★★
 async function getBrowserInstance() {
+  // 그래픽/사운드 등 불필요한 기능을 비활성화하여 서버 환경과의 호환성을 극대화합니다.
+  chromium.setHeadlessMode = true;
+  chromium.setGraphicsMode = false;
+
+  const executablePath = await chromium.executablePath();
+
   return puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: "new", // 새로운 headless 모드 사용
+    executablePath: executablePath,
+    headless: true, // "new" 대신 구형 headless 모드를 사용하여 호환성을 높입니다.
     ignoreHTTPSErrors: true,
   });
 }
@@ -22,7 +28,7 @@ module.exports = async (req, res) => {
 
   let browser = null;
   try {
-    console.log("헤드리스 브라우저 실행 시작 (최신 라이브러리 사용)...");
+    console.log("헤드리스 브라우저 실행 시작 (서버리스 최적화 모드)...");
     browser = await getBrowserInstance();
     const page = await browser.newPage();
     
@@ -31,12 +37,10 @@ module.exports = async (req, res) => {
     await page.goto(targetUrl, { waitUntil: 'networkidle2' });
     console.log("페이지 로딩 완료.");
 
-    // Lot 번호를 입력하고 폼을 제출합니다.
     console.log(`Lot 번호 입력: ${lot_no}`);
     await page.type('input[name="lot_no"]', lot_no);
     
     console.log("검색 버튼 클릭 및 결과 페이지 대기...");
-    // 클릭 후 페이지 이동을 기다립니다.
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'networkidle2' }),
       page.click('button.btn-lot-search'), 
@@ -45,7 +49,6 @@ module.exports = async (req, res) => {
 
     const pageContent = await page.content();
 
-    // '결과 없음' 메시지를 먼저 확인합니다.
     if (pageContent.includes("lot_no를 확인하여 주십시요")) {
       console.log(`'결과 없음' 감지: Lot No - ${lot_no}`);
       return res.status(200).json([]);
@@ -87,4 +90,3 @@ module.exports = async (req, res) => {
     }
   }
 };
-
