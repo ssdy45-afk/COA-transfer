@@ -1,16 +1,16 @@
-const chromium = require('@sparticuz/chromium-min');
+const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
 const cheerio = require('cheerio');
 
 async function getBrowserInstance() {
-  console.log("Launching Puppeteer with @sparticuz/chromium-min...");
+  console.log("Launching Puppeteer with @sparticuz/chromium (Vercel optimized)...");
 
   try {
     const executablePath = await chromium.executablePath();
     console.log("Executable path found:", !!executablePath);
 
     if (!executablePath) {
-      throw new Error('Chromium executable not found via @sparticuz/chromium-min');
+      throw new Error('Chromium executable not found via @sparticuz/chromium');
     }
 
     const browser = await puppeteer.launch({
@@ -21,7 +21,7 @@ async function getBrowserInstance() {
       ignoreHTTPSErrors: true,
     });
     
-    console.log("Puppeteer launched successfully with @sparticuz/chromium-min");
+    console.log("Puppeteer launched successfully with @sparticuz/chromium");
     return browser;
   } catch (error) {
     console.error("Browser launch error:", error);
