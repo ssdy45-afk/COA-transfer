@@ -1,4 +1,4 @@
-const { chromium } = require('playwright-core');
+const axios = require('axios');
 const cheerio = require('cheerio');
 
 module.exports = async (req, res) => {
@@ -19,61 +19,27 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'lot_no query parameter is required' });
   }
 
-  let browser = null;
-  let page = null;
-
   try {
-    console.log("Starting browser instance with Playwright...");
+    console.log("Making HTTP request to search...");
     
-    // Playwright 브라우저 실행
-    browser = await chromium.launch({
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ]
-    });
-    
-    page = await browser.newPage();
-    
-    // 타임아웃 설정
-    page.setDefaultTimeout(15000);
-    page.setDefaultNavigationTimeout(20000);
+    // POST 요청으로 검색
+    const response = await axios.post(
+      'https://www.duksan.kr/product/pro_lot_search.php',
+      `lot_no=${encodeURIComponent(lot_no)}`,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        },
+        timeout: 10000
+      }
+    );
 
-    const targetUrl = 'https://www.duksan.kr/product/pro_lot_search.php';
-    console.log(`Navigating to: ${targetUrl}`);
-
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
-    console.log("Page loaded successfully");
-
-    // 입력 필드에 값 설정
-    await page.fill('input[name="lot_no"]', lot_no);
-    console.log("Lot number filled");
-
-    // 검색 실행
-    console.log("Clicking search button...");
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-      page.click('button.btn-lot-search')
-    ]);
-
-    console.log("Search completed, parsing results...");
-    const content = await page.content();
-
-    // 결과 분석
-    if (content.includes("lot_no를 확인하여 주십시요")) {
-      console.log("No results found");
-      return res.status(200).json([]);
-    }
-
-    const $ = cheerio.load(content);
+    console.log("Response received, parsing results...");
+    const $ = cheerio.load(response.data);
     const results = [];
 
+    // 결과 테이블 파싱
     $('div.box-body table.table-lot-view tbody tr').each((index, element) => {
       const $cells = $(element).find('td');
       if ($cells.length === 5) {
@@ -87,7 +53,14 @@ module.exports = async (req, res) => {
       }
     });
 
+    // 결과 없음 확인
+    if (results.length === 0 && response.data.includes("lot_no를 확인하여 주십시요")) {
+      console.log("No results found");
+      return res.status(200).json([]);
+    }
+
     console.log(`Found ${results.length} results`);
+    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
     res.status(200).json(results);
 
   } catch (error) {
@@ -96,8 +69,5 @@ module.exports = async (req, res) => {
       error: 'Processing failed',
       message: error.message
     });
-  } finally {
-    if (page) await page.close().catch(console.error);
-    if (browser) await browser.close().catch(console.error);
   }
 };
