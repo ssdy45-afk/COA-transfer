@@ -9,6 +9,8 @@ const scraper = wrapper(axios.create({
   jar,
   responseType: 'arraybuffer',
   responseEncoding: 'binary',
+  // 요청 시간이 너무 길어지는 것을 방지하기 위해 타임아웃을 설정합니다.
+  timeout: 15000, 
 }));
 
 module.exports = async (req, res) => {
@@ -24,50 +26,47 @@ module.exports = async (req, res) => {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
     'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
-    'Referer': 'https://www.duksan.kr/', // Referer를 메인 페이지로 변경
+    'Referer': 'https://www.duksan.kr/',
     'Origin': 'https://www.duksan.kr',
     'Sec-Fetch-Dest': 'document',
     'Sec-Fetch-Mode': 'navigate',
     'Sec-Fetch-Site': 'same-origin',
-    'Sec-Fetch-User': '?1',
     'Upgrade-Insecure-Requests': '1',
-    'Cache-Control': 'max-age=0',
   };
 
   try {
-    // 1단계: 검색 페이지에 GET 요청을 보내 세션 쿠키와 페이지 내용을 획득합니다.
+    // 1단계: 검색 페이지에 GET 요청을 보내 초기 정보를 획득합니다.
     const getResponse = await scraper.get(targetUrl, { headers });
     const initialHtml = iconv.decode(getResponse.data, 'EUC-KR');
-    
-    // ★★★ 추가: 정밀 진단을 위해 서버에 받은 HTML의 일부를 기록(로깅)합니다 ★★★
-    console.log("--- Duksan 서버로부터 받은 초기 HTML ---");
-    console.log(initialHtml.substring(0, 2500)); // 받은 내용의 앞부분 2500자 출력
-    console.log("------------------------------------");
-
     const $initial = cheerio.load(initialHtml);
-
-    // 2단계: 페이지에 숨겨진 보안 토큰(`_token`) 값을 찾아냅니다.
     const token = $initial('input[name="_token"]').val();
 
-    // 토큰을 찾지 못했다면, 이는 보안에 의해 차단되었음을 의미합니다.
     if (!token) {
-      console.error("치명적 오류: 서버가 보내준 HTML 페이지에서 보안 토큰(_token)을 찾을 수 없습니다.");
-      throw new Error('Security token (_token) not found on the page. The request may have been blocked.');
+        console.error("치명적 오류: 초기 페이지에서 보안 토큰(_token)을 찾을 수 없습니다. 서버가 다른 페이지를 보낸 것 같습니다.");
+        // ★★★ 최종 진단: 받은 HTML 전체를 로그로 남깁니다 ★★★
+        console.error("--- 덕산 서버로부터 받은 전체 HTML ---");
+        console.error(initialHtml);
+        console.error("---------------------------------");
+        throw new Error('Initial page did not contain a security token.');
     }
-    console.log(`보안 토큰 발견 성공: ${token.substring(0, 10)}...`);
 
-    // 3단계: 획득한 토큰과 Lot 번호를 포함하여 POST 요청을 보냅니다.
+    // 2단계: 획득한 토큰과 Lot 번호로 데이터를 요청합니다.
     const formData = new URLSearchParams();
     formData.append('_token', token);
     formData.append('lot_no', lot_no);
     
-    // POST 요청 시 Content-Type 헤더를 추가합니다.
     const postHeaders = { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' };
     const postResponse = await scraper.post(targetUrl, formData, { headers: postHeaders });
-
     const decodedHtml = iconv.decode(postResponse.data, 'EUC-KR');
-    const $ = cheerio.load(decodedHtml);
+
+    // ★★★ 추가: '결과 없음' 메시지를 먼저 확인합니다. ★★★
+    if (decodedHtml.includes("lot_no를 확인하여 주십시요")) {
+        console.log(`'결과 없음' 감지: Lot No - ${lot_no}`);
+        // 결과가 없는 것은 오류가 아니므로, 빈 배열을 정상적으로 반환합니다.
+        return res.status(200).json([]);
+    }
     
+    const $ = cheerio.load(decodedHtml);
     const resultTable = $('div.box-body table.table-lot-view');
     const results = [];
 
@@ -90,8 +89,7 @@ module.exports = async (req, res) => {
     res.status(200).json(results);
 
   } catch (error) {
-    console.error('스크래핑 처리 중 심각한 오류 발생:', error.message);
-    res.status(500).json({ error: 'Failed to scrape the website.', details: error.message });
+    console.error('스크래핑 최종 단계에서 오류 발생:', error.message);
+    res.status(500).json({ error: 'Failed to process the request.', details: error.message });
   }
 };
-
