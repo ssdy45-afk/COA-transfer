@@ -1,5 +1,5 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
+// vercel.json에 함수 메모리 증가 설정이 필요함
+const puppeteer = require('puppeteer');
 
 module.exports = async (req, res) => {
   const { lot_no } = req.query;
@@ -8,70 +8,86 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'lot_no query parameter is required' });
   }
 
+  let browser = null;
+
   try {
-    // 다양한 가능한 URL 시도
-    const urls = [
-      'https://www.duksan.kr/product/pro_lot_search.php',
-      'https://duksan.kr/product/pro_lot_search.php',
-      'https://www.duksan.kr/product/pro_lot_search',
-      'https://duksan.kr/product/pro_lot_search'
-    ];
+    console.log("Launching browser...");
+    
+    // Vercel 환경에 최적화된 설정
+    browser = await puppeteer.launch({
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--disable-gpu'
+      ],
+      headless: 'new',
+      ignoreHTTPSErrors: true,
+    });
 
-    let lastError = null;
+    const page = await browser.newPage();
+    
+    // 기본 설정
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+    await page.setDefaultTimeout(15000);
+    await page.setDefaultNavigationTimeout(20000);
 
-    for (const url of urls) {
-      try {
-        console.log(`Trying URL: ${url}`);
-        
-        const response = await axios.post(
-          url,
-          `lot_no=${encodeURIComponent(lot_no)}`,
-          {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-            timeout: 10000,
-          }
-        );
+    console.log("Navigating to search page...");
+    await page.goto('https://www.duksan.kr/product/pro_lot_search.php', {
+      waitUntil: 'networkidle2'
+    });
 
-        console.log(`Success with URL: ${url}, status: ${response.status}`);
-        
-        const $ = cheerio.load(response.data);
-        const results = [];
+    console.log("Filling search form...");
+    await page.type('input[name="lot_no"]', lot_no);
 
-        $('div.box-body table.table-lot-view tbody tr').each((index, element) => {
-          const $cells = $(element).find('td');
-          if ($cells.length === 5) {
-            results.push({
-              item: $cells.eq(0).text().trim(),
-              spec: $cells.eq(1).text().trim(),
-              unit: $cells.eq(2).text().trim(),
-              method: $cells.eq(3).text().trim(),
-              result: $cells.eq(4).text().trim(),
-            });
-          }
-        });
+    console.log("Submitting form...");
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'networkidle2' }),
+      page.click('button.btn-lot-search')
+    ]);
 
-        if (results.length > 0 || response.data.includes("lot_no를 확인하여 주십시요")) {
-          return res.status(200).json(results);
+    console.log("Extracting results...");
+    const results = await page.evaluate(() => {
+      const rows = document.querySelectorAll('div.box-body table.table-lot-view tbody tr');
+      const data = [];
+      
+      rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length === 5) {
+          data.push({
+            item: cells[0].textContent.trim(),
+            spec: cells[1].textContent.trim(),
+            unit: cells[2].textContent.trim(),
+            method: cells[3].textContent.trim(),
+            result: cells[4].textContent.trim(),
+          });
         }
+      });
+      
+      return data;
+    });
 
-      } catch (error) {
-        lastError = error;
-        console.log(`Failed with URL: ${url}, error: ${error.message}`);
-        continue; // 다음 URL 시도
-      }
+    // 결과 없음 확인
+    const pageContent = await page.content();
+    if (results.length === 0 && pageContent.includes("lot_no를 확인하여 주십시요")) {
+      console.log("No results found");
+      return res.status(200).json([]);
     }
 
-    // 모든 URL 실패
-    throw lastError || new Error('All URL attempts failed');
+    console.log(`Found ${results.length} results`);
+    res.status(200).json(results);
 
   } catch (error) {
-    console.error('All attempts failed:', error.message);
+    console.error('Browser error:', error.message);
     res.status(500).json({ 
-      error: 'All search attempts failed',
+      error: 'Browser processing failed',
       message: error.message
     });
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
   }
 };
