@@ -5,11 +5,19 @@ const cheerio = require('cheerio');
 async function getBrowserInstance() {
   console.log("Launching Puppeteer with chrome-aws-lambda...");
   
+  // executablePath를 가져오지 못할 경우를 대비
+  let executablePath = await chromium.executablePath;
+  if (!executablePath) {
+    // 로컬 개발 환경일 경우 puppeteer-core의 chromium을 사용할 수 있지만, Vercel에서는 chrome-aws-lambda를 사용해야 함.
+    // 대체 방안이 없으므로 에러를 throw할 수 있음.
+    throw new Error('Unable to find executable path for Chromium');
+  }
+  
   const browser = await puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
+    executablePath: executablePath,
+    headless: true, // 명시적으로 true로 설정
     ignoreHTTPSErrors: true,
   });
   
