@@ -1,14 +1,14 @@
 {
-  "name": "coa-transfer",
-  "private": true,
-  "dependencies": {
-    "axios": "^1.7.7",
-    "cheerio": "^1.0.0-rc.12"
+  "functions": {
+    "api/*.js": { "runtime": "nodejs22.x" }
   },
-  "engines": { "node": "22.x" },
-  "scripts": {
-    "build": "echo \"no build step\"",
-    "start": "vercel dev"
-  }
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "s-maxage=300, stale-while-revalidate" }
+      ]
+    }
+  ]
 }
 
