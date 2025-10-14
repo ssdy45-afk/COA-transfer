@@ -633,8 +633,7 @@ Exp. Date :3 years after Mfg. Date
             showStatus('데이터를 조회 중입니다...', 'loading');
             
             try {
-                const resp = await fetch(`https://coa-transfer.vercel.app/api/scrape?lot_no=${encodeURIComponent(lot)}`);
-                if (!resp.ok) throw new Error(`서버 오류: ${resp.status}`);
+                const resp = await fetch(`/.netlify/functions/scrape?lot_no=${encodeURIComponent(lot)}`);
                 
                 const data = await resp.json();
                 if (!data.success) throw new Error(data.error || '데이터가 없습니다.');
