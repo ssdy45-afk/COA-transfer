@@ -7,7 +7,9 @@
     "build": "echo 'No build required for static site'"
   },
   "dependencies": {
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^3.3.2"
   },
-  "devDependencies": {}
+  "engines": {
+    "node": "18.x"
+  }
 }
