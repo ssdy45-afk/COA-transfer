@@ -288,45 +288,45 @@ Exp. Date :3 years after Mfg. Date
         // ==========================================
         // ★ Mock 데이터 함수들
         // ==========================================
-        function getMockData(lotNumber) {
-            const mockData = {
-                'P81202': {
-                    success: true,
-                    product: {
-                        name: 'Acetonitrile (ACN), HPLC Grade',
-                        code: '1698',
-                        casNumber: '75-05-8',
-                        mfgDate: '2024-08-19',
-                        expDate: '3 years after Mfg. Date'
-                    },
-                    tests: [
-                        { test: 'Appearance', unit: '-', specification: 'Clear, colorless liquid', result: 'Clear, colorless liquid' },
-                        { test: 'Assay', unit: '%', specification: '≥ 99.95', result: '99.99' },
-                        { test: 'Color', unit: 'APHA', specification: '≤ 5', result: '2' },
-                        { test: 'Water (H2O)', unit: '%', specification: '≤ 0.01', result: '0.004' }
-                    ],
-                    source: 'mock-data'
-                },
-                'P93210': {
-                    success: true,
-                    product: {
-                        name: 'n-Heptane, HPLC Grade',
-                        code: '2701',
-                        casNumber: '142-82-5',
-                        mfgDate: '2025-09-03',
-                        expDate: '3 years after Mfg. Date'
-                    },
-                    tests: [
-                        { test: 'Color (APHA)', unit: '-', specification: 'Max. 10', result: '3' },
-                        { test: 'Assay', unit: '%', specification: 'Min. 96.0', result: '99.4' },
-                        { test: 'Water', unit: '%', specification: 'Max. 0.02', result: '0.003' }
-                    ],
-                    source: 'mock-data'
-                }
-            };
-            
-            return mockData[lotNumber] || mockData['P81202'];
-        }
+       function getMockData(lotNumber) {
+  const mockData = {
+    'P77202': {
+      success: true,
+      product: {
+        name: 'Acetonitrile (ACN), HPLC Grade',
+        code: '1698',
+        casNumber: '75-05-8',
+        mfgDate: '2025-07-07',
+        expDate: '3 years after Mfg. Date'
+      },
+      tests: getCompleteMockTests(''), // 위에서 정의한 완전한 테스트 목록 사용
+      source: 'mock-data'
+    },
+    'P93210': {
+      success: true,
+      product: {
+        name: 'n-Heptane, HPLC Grade',
+        code: '2701',
+        casNumber: '142-82-5',
+        mfgDate: '2025-09-03',
+        expDate: '3 years after Mfg. Date'
+      },
+      tests: [
+        { test: 'Color (APHA)', unit: '-', specification: 'Max. 10', result: '3' },
+        { test: 'Optical Absorbance 254 nm', unit: '-', specification: 'Max. 0.014', result: '0.003' },
+        { test: 'Optical Absorbance 215 nm', unit: '-', specification: 'Max. 0.20', result: '0.54' },
+        { test: 'Optical Absorbance 200 nm', unit: '-', specification: 'Max. 0.75', result: '0.54' },
+        { test: 'Fluorescence Background (as Quinine Suitable)', unit: '-', specification: 'To pass test', result: 'P.T.' },
+        { test: 'Residue after evaporation', unit: 'ppm', specification: 'Max. 5', result: '<1' },
+        { test: 'Water', unit: '%', specification: 'Max. 0.02', result: '0.003' },
+        { test: 'Assay', unit: '%', specification: 'Min. 96.0', result: '99.4' }
+      ],
+      source: 'mock-data'
+    }
+  };
+  
+  return mockData[lotNumber] || mockData['P77202'];
+}
 
         // API 호출 헬퍼 함수 (Mock 데이터 폴백 포함)
         async function callApi(endpoint, params = {}) {
