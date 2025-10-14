@@ -1,15 +1,9 @@
 {
-  "name": "coa-generator-multi-platform",
+  "name": "coa-generator-vercel",
   "version": "1.0.0",
-  "description": "COA Generator for Vercel and Netlify",
-  "main": "index.html",
-  "scripts": {
-    "build": "echo 'No build required for static site'"
-  },
+  "type": "module",
   "dependencies": {
-    "node-fetch": "^3.3.2"
-  },
-  "engines": {
-    "node": "18.x"
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12"
   }
 }
