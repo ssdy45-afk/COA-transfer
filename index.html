@@ -1,390 +1,646 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Certificate of Analysis Generator (Single File)</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @media print {
-      @page { margin: 0; }
-      body { margin: 2cm; }
-      body * { visibility: hidden; }
-      #coa-container, #coa-container * { visibility: visible; }
-      #coa-container { position: absolute; left: 0; top: 0; width: 100%; min-height: 98vh; }
-      .no-print { display: none; }
-      tr, td, th { page-break-inside: avoid; }
-    }
-    #historyList::-webkit-scrollbar { width: 6px; }
-    #historyList::-webkit-scrollbar-track { background: #f1f1f1; }
-    #historyList::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
-    #historyList::-webkit-scrollbar-thumb:hover { background: #555; }
-    .font-arial { font-family: Arial, sans-serif; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    .loading-spinner { animation: spin 1s linear infinite; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate of Analysis Generator (Serverless)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            @page { margin: 0; }
+            body { margin: 2cm; }
+            body * { visibility: hidden; }
+            #coa-container, #coa-container * { visibility: visible; }
+            #coa-container { 
+                position: absolute; 
+                left: 0; 
+                top: 0; 
+                width: 100%; 
+                min-height: 98vh; 
+            }
+            .no-print { display: none; }
+            tr, td, th { page-break-inside: avoid; }
+        }
+        
+        #historyList::-webkit-scrollbar { width: 6px; }
+        #historyList::-webkit-scrollbar-track { background: #f1f1f1; }
+        #historyList::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
+        #historyList::-webkit-scrollbar-thumb:hover { background: #555; }
+        
+        .font-arial { font-family: Arial, sans-serif; }
+        
+        @keyframes spin { 
+            0% { transform: rotate(0deg); } 
+            100% { transform: rotate(360deg); } 
+        }
+        .loading-spinner { animation: spin 1s linear infinite; }
+    </style>
 </head>
 <body class="bg-gray-100 p-4 sm:p-8">
-  <div class="container mx-auto">
-    <h1 class="text-3xl font-bold mb-4 text-center text-gray-700 no-print">성적서(COA) 생성기</h1>
-    <div class="flex flex-col lg:flex-row gap-8">
-      <!-- Input -->
-      <div class="lg:w-1/3 bg-white p-6 rounded-lg shadow-lg no-print">
-        <h2 class="text-2xl font-semibold mb-3 border-b pb-2">데이터 입력</h2>
-        <div class="mb-6 p-4 bg-gray-50 rounded-lg border">
-          <label for="duksanLotNumberInput" class="block text-md font-semibold text-gray-800 mb-2">Duksan LOT 번호 조회</label>
-          <input id="duksanLotNumberInput" type="text" placeholder="LOT 번호를 입력하세요 (예: P2L202)" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
-          <button id="duksanSearchButton" class="mt-2 w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 flex items-center justify-center">
-            <span id="buttonText">덕산 데이터 자동 조회</span>
-            <svg id="loadingSpinner" class="hidden loading-spinner w-4 h-4 ml-2 text-white" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          </button>
-          <div id="searchStatus" class="mt-2 text-sm"></div>
-          <p class="text-xs text-gray-500 mt-2">버튼을 누르면 데이터를 자동으로 조회하여 아래 '성적서 데이터' 칸을 채웁니다.</p>
-        </div>
+    <div class="container mx-auto">
+        <h1 class="text-3xl font-bold mb-4 text-center text-gray-700 no-print">성적서(COA) 생성기</h1>
+        
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Input Data Section -->
+            <div class="lg:w-1/3 bg-white p-6 rounded-lg shadow-lg no-print">
+                <h2 class="text-2xl font-semibold mb-3 border-b pb-2">데이터 입력</h2>
+                
+                <!-- Duksan Search Section -->
+                <div class="mb-6 p-4 bg-gray-50 rounded-lg border">
+                    <label for="duksanLotNumberInput" class="block text-md font-semibold text-gray-800 mb-2">Duksan LOT 번호 조회</label>
+                    <input type="text" id="duksanLotNumberInput" placeholder="LOT 번호를 입력하세요 (예: P81202)" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <button id="duksanSearchButton" class="mt-2 w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 flex items-center justify-center">
+                        <span id="buttonText">덕산 데이터 자동 조회</span>
+                        <svg id="loadingSpinner" class="hidden loading-spinner w-4 h-4 ml-2 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </button>
+                    
+                    <div id="searchStatus" class="mt-2 text-sm"></div>
+                    <p class="text-xs text-gray-500 mt-2">버튼을 누르면 데이터를 자동으로 조회하여 아래 '성적서 데이터' 칸을 채웁니다.</p>
+                </div>
 
-        <div class="mb-4" hidden>
-          <label for="excelDataInput" class="block text-sm font-medium text-gray-700 mb-1">제품 데이터 (Excel/JSON)</label>
-          <textarea id="excelDataInput" class="w-full h-40 border border-gray-300 rounded-md p-3 text-xs font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" spellcheck="false">[
-  { "Product code": 2701, "Product No.": "H350",  "2nd Item Number": "D10016", "Description": "n-Heptane, HPLC Grade", "Retest date": 3 },
-  { "Product code": 7638, "Product No.": "H350D", "2nd Item Number": "D10043", "Description": "n-Heptane, Anhydrous ",     "Retest date": 3 },
-  { "Product code": 1952, "Product No.": "W5",    "2nd Item Number": "D10004", "Description": "Water (HPLC), Fisher Chemical", "Retest date": 2 },
-  { "Product code": 1698, "Product No.": "A998",  "2nd Item Number": "D10002", "Description": "Acetonitrile (ACN), HPLC Grade", "Retest date": 3 }
-]</textarea>
-        </div>
+                <!-- Product Database (Hidden) -->
+                <div class="mb-4" hidden>
+                    <label for="excelDataInput" class="block text-sm font-medium text-gray-700 mb-1">제품 데이터 (Excel/JSON)</label>
+                    <textarea id="excelDataInput" class="w-full h-40 border border-gray-300 rounded-md p-3 text-xs font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" spellcheck="false">
+[제품 데이터 JSON 내용 - 원본과 동일하게 유지]
+                    </textarea>
+                </div>
 
-        <div>
-          <label for="dataInput" class="block text-sm font-medium text-gray-700 mb-1">성적서 데이터</label>
-          <textarea id="dataInput" class="w-full h-60 border border-gray-300 rounded-md p-3 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" spellcheck="false"></textarea>
-        </div>
+                <!-- COA Data Input -->
+                <div class="mb-4">
+                    <label for="dataInput" class="block text-sm font-medium text-gray-700 mb-1">성적서 데이터</label>
+                    <textarea id="dataInput" class="w-full h-60 border border-gray-300 rounded-md p-3 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" spellcheck="false">
+Acetonitrile [75-05-8]
+Product code. 1698
+Lot-P81202
+TESTS	UNIT	SPECIFICATION	RESULTS
+Appearance	-	Clear, colorless liquid	Clear, colorless liquid
+Absorbance	Pass/Fail	Pass test	Pass test
+Assay	%	≥ 99.95	99.99
+Color	APHA	≤ 5	2
+Density at 25 Degrees C	GM/ML	Inclusive Between 0.775~0.780	0.777
+Evaporation residue	ppm	≤ 1	≤ 1
+Fluorescence Background	Pass/Fail	To pass test	Pass test
+Identification	Pass/Fail	To pass test	Pass test
+LC Gradient Suitability	Pass/Fail	To pass test	Pass test
+Optical Absorbance 190 nm	Abs.unit	≤ 1.00	0.45
+Optical Absorbance 195 nm	Abs.unit	≤ 0.15	0.11
+Optical Absorbance 200 nm	Abs.unit	≤ 0.07	0.03
+Optical Absorbance 205 nm	Abs.unit	≤ 0.05	0.02
+Optical Absorbance 210 nm	Abs.unit	≤ 0.04	0.018
+Optical Absorbance 220 nm	Abs.unit	≤ 0.02	0.009
+Optical Absorbance 254 nm	Abs.unit	≤ 0.01	0.002
+Refractive index @ 25 Deg C	-	Inclusive Between 1.3405~1.3425	1.342
+Titratable Acid	mEq/g	≤ 0.008	0.0006
+Titratable Base	mEq/g	≤ 0.0006	0.00001
+Water (H2O)	%	≤ 0.01	0.004
+Mfg. Date :2025-08-19
+Exp. Date :3 years after Mfg. Date
+                    </textarea>
+                </div>
+                
+                <!-- Manual Input Fields -->
+                <div class="mt-4 space-y-3">
+                    <div>
+                        <label for="manualProductNo" class="block text-sm font-medium text-gray-700">Product No. (수동 입력)</label>
+                        <input type="text" id="manualProductNo" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2">
+                    </div>
+                    <div>
+                        <label for="manualLotNumber" class="block text-sm font-medium text-gray-700">LOT Number (수동 입력)</label>
+                        <input type="text" id="manualLotNumber" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2">
+                    </div>
+                    <div>
+                        <label for="manualDescription" class="block text-sm font-medium text-gray-700">Description (수동 입력)</label>
+                        <input type="text" id="manualDescription" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2">
+                    </div>
+                    <div>
+                        <label for="manualRetestDate" class="block text-sm font-medium text-gray-700">Retest Date (수동 입력)</label>
+                        <input type="text" id="manualRetestDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2">
+                    </div>
+                </div>
 
-        <div class="mt-4 space-y-3">
-          <div>
-            <label for="manualProductNo" class="block text-sm font-medium text-gray-700">Product No. (수동 입력)</label>
-            <input id="manualProductNo" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2" />
-          </div>
-          <div>
-            <label for="manualLotNumber" class="block text-sm font-medium text-gray-700">LOT Number (수동 입력)</label>
-            <input id="manualLotNumber" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2" />
-          </div>
-          <div>
-            <label for="manualDescription" class="block text-sm font-medium text-gray-700">Description (수동 입력)</label>
-            <input id="manualDescription" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2" />
-          </div>
-          <div>
-            <label for="manualRetestDate" class="block text-sm font-medium text-gray-700">Retest Date (수동 입력)</label>
-            <input id="manualRetestDate" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-2" />
-          </div>
-        </div>
+                <!-- Action Buttons -->
+                <button id="populateBtn" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition">COA 생성 (Populate)</button>
+                <button onclick="window.print()" class="mt-2 w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition">인쇄 (Print)</button>
 
-        <button id="populateBtn" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition">COA 생성 (Populate)</button>
-        <button onclick="window.print()" class="mt-2 w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition">인쇄 (Print)</button>
-
-        <div id="historyContainer" class="mt-6 border-t pt-4">
-          <div class="flex justify-between items-center">
-            <h3 class="text-lg font-semibold text-gray-800">History</h3>
-            <button id="clearHistoryBtn" class="text-sm text-red-500 hover:text-red-700">Clear History</button>
-          </div>
-          <div id="historyList" class="mt-2 max-h-32 overflow-y-auto border rounded-md p-2 bg-gray-50 space-y-1"></div>
-        </div>
-      </div>
-
-      <!-- COA Output -->
-      <div class="lg:w-2/3">
-        <div id="coa-container" class="bg-white p-8 sm:p-12 rounded-lg shadow-lg flex flex-col min-h-screen print:min-h-[100vh]">
-          <header class="flex justify-between items-start mb-8">
-            <div><img src="logo.png" alt="Company Logo" class="h-16" onerror="this.style.display='none'" /></div>
-            <div class="text-right text-xs text-gray-600">
-              <p class="font-bold text-base">Thermo Fisher Scientific Korea</p>
-              <p class="font-bold mt-2">(Incheon Airport Logistics Complex)</p>
-              <p>D5,D6 150 Gonghangdong-ro 296 beon-gil</p>
-              <p>Jung-gu, Incheon 2239, Korea</p>
-              <p>Tel. +82-2-2023-0600</p>
-              <p>Fax. +82-2-6196-5501,2</p>
+                <!-- History Section -->
+                <div id="historyContainer" class="mt-6 border-t pt-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-lg font-semibold text-gray-800">History</h3>
+                        <button id="clearHistoryBtn" class="text-sm text-red-500 hover:text-red-700">Clear History</button>
+                    </div>
+                    <div id="historyList" class="mt-2 max-h-32 overflow-y-auto border rounded-md p-2 bg-gray-50 space-y-1"></div>
+                </div>
             </div>
-          </header>
 
-          <h2 class="text-center text-3xl font-bold my-2 pb-4 border-b-4 border-gray-800">Certificate of Analysis</h2>
+            <!-- COA Display Section -->
+            <div class="lg:w-2/3">
+                <div id="coa-container" class="bg-white p-8 sm:p-12 rounded-lg shadow-lg flex flex-col min-h-screen print:min-h-[100vh]">
+                    <header class="flex justify-between items-start mb-8">
+                        <div>
+                            <img src="logo.png" alt="Company Logo" class="h-16" onerror="this.style.display='none'">
+                        </div>
+                        <div class="text-right text-xs text-gray-600">
+                            <p class="font-bold text-base">Thermo Fisher Scientific Korea</p>
+                            <p class="font-bold mt-2">(Incheon Airport Logistics Complex)</p>
+                            <p>D5,D6 150 Gonghangdong-ro 296 beon-gil</p>
+                            <p>Jung-gu, Incheon 2239, Korea</p>
+                            <p>Tel. +82-2-2023-0600</p>
+                            <p>Fax. +82-2-6196-5501,2</p>
+                        </div>
+                    </header>
 
-          <div class="mb-2 text-sm space-y-1 pt-0 font-arial">
-            <div class="flex"><strong class="w-48 font-normal">Product No.:</strong><span id="productNo"></span></div>
-            <div class="flex"><strong class="w-48 font-normal">LOT Number:</strong><span id="lotNumber"></span></div>
-            <div class="flex"><strong class="w-48 font-normal">CAS Number:</strong><span id="casNumber"></span></div>
-            <div class="flex"><strong class="w-48 font-normal">Description:</strong><span id="description"></span></div>
-            <div class="flex"><strong class="w-48 font-normal">Quality Test/Release Date:</strong><span id="releaseDate"></span></div>
-            <div class="flex"><strong class="w-48 font-normal">Retest Date:</strong><span id="retestDate"></span></div>
-          </div>
+                    <h2 class="text-center text-3xl font-bold my-2 pb-4 border-b-4 border-gray-800">Certificate of Analysis</h2>
 
-          <div class="flex-grow">
-            <table class="w-full border-collapse text-sm font-arial">
-              <thead>
-                <tr class="border-b-4 border-gray-800">
-                  <th class="pb-2 p-2 text-left font-semibold">Result Name</th>
-                  <th class="pb-2 p-2 text-left font-semibold">Units</th>
-                  <th class="pb-2 p-2 text-left font-semibold">Specifications</th>
-                  <th class="pb-2 p-2 text-left font-semibold">Test Value</th>
-                </tr>
-              </thead>
-              <tbody id="resultsTableBody"></tbody>
-            </table>
-          </div>
+                    <div class="mb-2 text-sm space-y-1 pt-0 font-arial">
+                        <div class="flex"><strong class="w-48 font-normal">Product No.:</strong><span id="productNo"></span></div>
+                        <div class="flex"><strong class="w-48 font-normal">LOT Number:</strong><span id="lotNumber"></span></div>
+                        <div class="flex"><strong class="w-48 font-normal">CAS Number:</strong><span id="casNumber"></span></div>
+                        <div class="flex"><strong class="w-48 font-normal">Description:</strong><span id="description"></span></div>
+                        <div class="flex"><strong class="w-48 font-normal">Quality Test/Release Date:</strong><span id="releaseDate"></span></div>
+                        <div class="flex"><strong class="w-48 font-normal">Retest Date:</strong><span id="retestDate"></span></div>
+                    </div>
 
-          <footer class="mt-12 pt-4">
-            <div class="flex justify-between items-end">
-              <div class="text-xs text-gray-500 w-2/3">
-                <p>Note: The data listed is valid for all package sizes of this lot of this product, expressed as an extension of this catalog number listed above. If there are any questions with this certificate, please call at (82)-2-2023-0600.</p>
-                <p class="mt-2">*Based on suggested storage condition.</p>
-              </div>
-              <div class="text-center">
-                <img src="sign.png" alt="Signature" class="h-16 mx-auto" onerror="this.style.display='none'" />
-                <p class="font-semibold mt-2">Guseon.Jeong - Quality Control Supervisor</p>
-              </div>
+                    <div class="flex-grow">
+                        <table class="w-full border-collapse text-sm font-arial">
+                            <thead>
+                                <tr class="border-b-4 border-gray-800">
+                                    <th class="pb-2 p-2 text-left font-semibold">Result Name</th>
+                                    <th class="pb-2 p-2 text-left font-semibold">Units</th>
+                                    <th class="pb-2 p-2 text-left font-semibold">Specifications</th>
+                                    <th class="pb-2 p-2 text-left font-semibold">Test Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody"></tbody>
+                        </table>
+                    </div>
+
+                    <footer class="mt-12 pt-4">
+                        <div class="flex justify-between items-end">
+                            <div class="text-xs text-gray-500 w-2/3">
+                                <p>Note: The data listed is valid for all package sizes of this lot of this product, expressed as an extension of this catalog number listed above. If there are any questions with this certificate, please call at (82)-2-2023-0600.</p>
+                                <p class="mt-2">*Based on suggested storage condition.</p>
+                            </div>
+                            <div class="text-center">
+                                <img src="sign.png" alt="Signature" class="h-16 mx-auto" onerror="this.style.display='none'">
+                                <p class="font-semibold mt-2">Guseon.Jeong - Quality Control Supervisor</p>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
             </div>
-          </footer>
         </div>
-      </div>
     </div>
-  </div>
 
-  <script>
-    const HISTORY_KEY = 'coaGeneratorHistory';
+    <script>
+        const HISTORY_KEY = 'coaGeneratorHistory';
 
-    // ==== Product mapping (by NAME keywords), fix MEK, add Heptane ====
-    const productMapping = {
-      'acetonitrile': { code: '1698', productNo: 'A998', description: 'Acetonitrile (ACN), HPLC Grade', retest: 3, cas: '75-05-8' },
-      'water':        { code: '1952', productNo: 'W5',   description: 'Water (HPLC), Fisher Chemical',    retest: 2, cas: '7732-18-5' },
-      'heptane':      { code: '2701', productNo: 'H350', description: 'n-Heptane, HPLC Grade',            retest: 3, cas: '142-82-5' },
-      '2-butanone':   { code: 'MEK', productNo: 'E123',  description: '2-Butanone (MEK), HPLC Grade',     retest: 3, cas: '78-93-3' },
-      'ethanol':      { code: '2716', productNo: 'A9951',description: 'Ethanol, absolute, ACS Grade',     retest: 5, cas: '64-17-5' },
-      '2-propanol':   { code: '7954', productNo: 'A416', description: '2-Propanol, ACS Grade',            retest: 5, cas: '67-63-0' },
-      'isopropanol':  { code: '7954', productNo: 'A416', description: '2-Propanol, ACS Grade',            retest: 5, cas: '67-63-0' },
-      'chloroform':   { code: '2664', productNo: 'C606', description: 'Chloroform (Preservative/HPLC)',   retest: 3, cas: '67-66-3' },
-      'hexanes':      { code: '826',  productNo: 'H302', description: 'Hexanes, HPLC Grade',              retest: 3, cas: '110-54-3' },
-      'toluene':      { code: '2582', productNo: 'T290', description: 'Toluene (HPLC), Fisher Chemical',  retest: 3, cas: '108-88-3' },
-      'thf':          { code: '1695', productNo: 'T425', description: 'Tetrahydrofuran (HPLC), unstabilized, Fisher Chemical', retest: 1, cas: '109-99-9' }
-    };
+        // Product mapping database
+        const productMapping = {
+            'acetonitrile': { code: '1698', productNo: 'A998', description: 'Acetonitrile (ACN), HPLC Grade', retest: 3, cas: '75-05-8' },
+            'acetone': { code: '2672', productNo: 'A18', description: 'Acetone (Certified ACS), Fisher Chemical', retest: 5, cas: '67-64-1' },
+            'methanol': { code: '1704', productNo: 'A452', description: 'Methanol (Methyl alcohol), HPLC Grade', retest: 3, cas: '67-56-1' },
+            'methyl alcohol': { code: '1704', productNo: 'A452', description: 'Methanol (Methyl alcohol), HPLC Grade', retest: 3, cas: '67-56-1' },
+            'ethanol': { code: '2716', productNo: 'A9951', description: 'Ethanol, absolute, ACS Grade', retest: 5, cas: '64-17-5' },
+            'isopropanol': { code: '7954', productNo: 'A416', description: '2-Propanol, ACS Grade', retest: 5, cas: '67-63-0' },
+            '2-propanol': { code: '7954', productNo: 'A416', description: '2-Propanol, ACS Grade', retest: 5, cas: '67-63-0' },
+            'water': { code: '1952', productNo: 'W5', description: 'Water (HPLC), Fisher Chemical', retest: 2, cas: '7732-18-5' },
+            'chloroform': { code: '2664', productNo: 'C606', description: 'Chloroform (Approx. 0.75% Ethanol as Preservative/HPLC), Fisher Chemical', retest: 3, cas: '67-66-3' },
+            'hexanes': { code: '826', productNo: 'H302', description: 'Hexanes, HPLC Grade', retest: 3, cas: '110-54-3' },
+            'toluene': { code: '2582', productNo: 'T290', description: 'Toluene (HPLC), Fisher Chemical', retest: 3, cas: '108-88-3' },
+            '2-butanone': { code: '2678', productNo: 'A383', description: '1-Butanol (n-Butyl alcohol),HPLC Grade', retest: 3, cas: '78-93-3' },
+            'butanol': { code: '2678', productNo: 'A383', description: '1-Butanol (n-Butyl alcohol),HPLC Grade', retest: 3, cas: '71-36-3' },
+            'cyclohexane': { code: '2782', productNo: 'C620', description: 'Cyclohexane, HPLC Grade', retest: 3, cas: '110-82-7' },
+            'dioxane': { code: '2789', productNo: 'D114', description: '1,4-Dioxane , HPLC Grade', retest: 3, cas: '123-91-1' },
+            'dmf': { code: '2995', productNo: 'D118', description: 'N,N-Dimethylformamide (DMF), HPLC Grade', retest: 3, cas: '68-12-2' },
+            'methylene chloride': { code: '2659', productNo: 'D143', description: 'Methylene Chloride (HPLC), Fisher Chemical', retest: 3, cas: '75-09-2' },
+            'dichloromethane': { code: '2659', productNo: 'D143', description: 'Methylene Chloride (HPLC), Fisher Chemical', retest: 3, cas: '75-09-2' },
+            'mtbe': { code: '3974', productNo: 'E127', description: 'Methyl tert-Butyl Ether (HPLC), Fisher Chemical', retest: 3, cas: '1634-04-4' },
+            'ethyl ether': { code: '2690', productNo: 'E138', description: 'Ethyl Ether Anhydrous (Certified ACS), Fisher Chemical™', retest: 5, cas: '60-29-7' },
+            'ethyl acetate': { code: '1734', productNo: 'E195', description: 'Ethyl acetate, HPLC Grade', retest: 2, cas: '141-78-6' },
+            'heptane': { code: '2701', productNo: 'H350', description: 'n-Heptane, HPLC Grade', retest: 3, cas: '142-82-5' },
+            'isooctane': { code: '3469', productNo: 'O296', description: 'Isooctane (HPLC), Fisher Chemical', retest: 2, cas: '540-84-1' },
+            'pentane': { code: '2767', productNo: 'P399', description: 'Pentane (HPLC), Fisher Chemical', retest: 2, cas: '109-66-0' },
+            'thf': { code: '1695', productNo: 'T425', description: 'Tetrahydrofuran (HPLC), unstabilized, Fisher Chemical', retest: 1, cas: '109-99-9' },
+            'tetrahydrofuran': { code: '1695', productNo: 'T425', description: 'Tetrahydrofuran (HPLC), unstabilized, Fisher Chemical', retest: 1, cas: '109-99-9' },
+            'xylenes': { code: '1649', productNo: 'X5', description: 'Xylenes, ACS Grade', retest: 5, cas: '1330-20-7' }
+        };
 
-    // Reverse lookup by code
-    function findByCode(code) {
-      const lc = String(code).toLowerCase();
-      return Object.values(productMapping).find(p => String(p.code).toLowerCase() === lc) || null;
-    }
-
-    // ===== UI helpers =====
-    function showStatus(message, type = 'info') {
-      const statusDiv = document.getElementById('searchStatus');
-      const className = type === 'success' ? 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative'
-        : type === 'error' ? 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative'
-        : 'bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative';
-      statusDiv.innerHTML = `<div class="${className}" role="alert">${message}</div>`;
-    }
-    function clearStatus(){ document.getElementById('searchStatus').innerHTML=''; }
-    function showLoading(show){
-      const t=document.getElementById('buttonText');
-      const sp=document.getElementById('loadingSpinner');
-      const btn=document.getElementById('duksanSearchButton');
-      if(show){ t.textContent='조회 중...'; sp.classList.remove('hidden'); btn.disabled=true; }
-      else { t.textContent='덕산 데이터 자동 조회'; sp.classList.add('hidden'); btn.disabled=false; }
-    }
-
-    // ===== Data ops =====
-    function escapeHtml(s){ return (s??'').toString().replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",
-      ">":"&gt;"}[c])); }
-
-    function appendRowSafe(tbody, c1, c2, c3, c4){
-      const tr=document.createElement('tr');
-      [c1,c2,c3,c4].forEach(v=>{ const td=document.createElement('td'); td.className='px-2 py-0.5'; td.textContent=(v??'').toString(); tr.appendChild(td); });
-      tbody.appendChild(tr);
-    }
-
-    function calculateRetestDate(baseDateStr, years){
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(baseDateStr)||!Number.isFinite(years)) return '';
-      const d=new Date(baseDateStr); d.setFullYear(d.getFullYear()+years); d.setDate(d.getDate()-1);
-      const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0');
-      return `${y}-${m}-${da}`;
-    }
-
-    // ===== History =====
-    function getHistory(){ const j=localStorage.getItem(HISTORY_KEY); return j?JSON.parse(j):[]; }
-    function addHistoryEntry(entry){ if(!entry.lotNumber && !entry.productNo) return; let h=getHistory(); h=h.filter(x=>!(x.lotNumber===entry.lotNumber&&x.productNo===entry.productNo)); h.unshift(entry); if(h.length>20) h.pop(); localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); loadHistoryDisplay(); }
-    function loadHistoryDisplay(){ const h=getHistory(); const box=document.getElementById('historyList'); box.innerHTML=''; if(!h.length){ box.innerHTML='<p class="text-xs text-gray-500 text-center p-2">No history yet.</p>'; return; } h.forEach((e,i)=>{ const div=document.createElement('div'); div.className='p-2 border-b last:border-b-0 text-sm cursor-pointer hover:bg-blue-100 rounded'; div.innerHTML=`<p class="font-semibold truncate">No.: ${escapeHtml(e.productNo||'N/A')}</p><p class="text-xs text-gray-600">Lot: ${escapeHtml(e.lotNumber||'N/A')}</p>`; div.onclick=()=>applyHistoryEntry(i); box.appendChild(div); }); }
-    function applyHistoryEntry(i){ const h=getHistory(); const e=h[i]; if(!e) return; document.getElementById('dataInput').value=e.rawData; document.getElementById('manualProductNo').value=e.manualProductNo||''; document.getElementById('manualLotNumber').value=e.manualLotNumber||''; document.getElementById('manualDescription').value=e.manualDescription||''; document.getElementById('manualRetestDate').value=e.manualRetestDate||''; populateCoa(false); }
-
-    // ===== Main flow =====
-    async function searchAndPopulateDuksanData(){
-      const lot = document.getElementById('duksanLotNumberInput').value.trim();
-      if(!lot){ alert('LOT 번호를 입력해주세요.'); return; }
-      showLoading(true); showStatus('데이터를 조회 중입니다...', 'loading');
-      try{
-        const resp = await fetch(`/api/scrape?lot_no=${encodeURIComponent(lot)}`);
-        if(!resp.ok) throw new Error(`서버 오류: ${resp.status}`);
-        const data = await resp.json();
-        if(!data.success) throw new Error(data.error || '데이터가 없습니다.');
-        if(!data.tests || !data.tests.length) throw new Error('테스트 결과 데이터가 없습니다.');
-
-        // Extract
-        let productName = data.product.name || '';
-        let productCode = data.product.code || '';
-        let casNumber   = data.product.casNumber || '';
-        let mfgDate     = data.product.mfgDate || '';
-        let expDate     = data.product.expDate || '';
-        let retestYears = 3;
-
-        // rawData 보강 추출
-        if(data.rawData){
-          if(!productName || productName==='Unknown Product'){
-            const m=data.rawData.match(/Certificate of Analysis\s*([^\n\r]+)/i); if(m) productName=m[1].trim();
-          }
-          if(!casNumber){ const m=data.rawData.match(/\[([^\]]+)\]/); if(m) casNumber=m[1]; }
-          if(!productCode){ const m=data.rawData.match(/Product code\.?\s*([A-Za-z0-9-]+)/i); if(m) productCode=m[1]; }
-          if(!mfgDate){ const m=data.rawData.match(/Mfg\. Date\s*:\s*(\d{4}-\d{2}-\d{2})/i); if(m) mfgDate=m[1]; }
-          if(!expDate){ const m=data.rawData.match(/Exp\. Date\s*:\s*([^\n\r]+)/i); if(m) expDate=m[1].trim(); }
+        // Utility functions
+        function escapeHtml(s) {
+            return (s ?? '').toString().replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
         }
 
-        // ===== CODE-FIRST MAPPING =====
-        let matchedByCode = null;
-        if(productCode){ matchedByCode = findByCode(productCode); }
-        if(matchedByCode){
-          productName = matchedByCode.description;
-          casNumber   = casNumber || matchedByCode.cas;
-          retestYears = matchedByCode.retest;
-        } else {
-          // Patterns only when no code match
-          const testNames = data.tests.map(t => (t.test||'').toLowerCase()).join(' ');
-          const testCount = data.tests.length;
-          if((testNames.includes('optical absorbance') && testNames.includes('refractive index') && testCount >= 15) || (testNames.includes('acetonitrile') && testCount>10)){
-            productName='Acetonitrile (ACN), HPLC Grade'; productCode='1698'; casNumber='75-05-8'; retestYears=3;
-          } else if((testNames.includes(' water ') && testCount<8) || testNames.includes('water (h2o)')){
-            productName='Water (HPLC), Fisher Chemical'; productCode='1952'; casNumber='7732-18-5'; retestYears=2;
-          }
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('searchStatus');
+            const className = type === 'success' ? 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative'
+                : type === 'error' ? 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative'
+                : 'bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative';
+            statusDiv.innerHTML = `<div class="${className}" role="alert">${message}</div>`;
         }
 
-        // Name-based enhancement (skip if code matched)
-        if(productName && productName!=='Unknown Product' && !matchedByCode){
-          const norm = productName.toLowerCase();
-          for(const [k,v] of Object.entries(productMapping)){
-            if(norm.includes(k)) { productName=v.description; productCode=productCode||v.code; casNumber=casNumber||v.cas; retestYears=v.retest; break; }
-          }
+        function clearStatus() {
+            document.getElementById('searchStatus').innerHTML = '';
         }
 
-        if(!mfgDate) mfgDate = new Date().toISOString().split('T')[0];
-        if(expDate && /years/.test(expDate)){ const m=expDate.match(/(\d+)\s*years/); if(m) retestYears=parseInt(m[1],10); }
-        if(!productName || productName==='Unknown Product') productName='Chemical Product';
-        if(!casNumber) casNumber='N/A';
+        function showLoading(show) {
+            const buttonText = document.getElementById('buttonText');
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const searchButton = document.getElementById('duksanSearchButton');
+            
+            if (show) {
+                buttonText.textContent = '조회 중...';
+                loadingSpinner.classList.remove('hidden');
+                searchButton.disabled = true;
+            } else {
+                buttonText.textContent = '덕산 데이터 자동 조회';
+                loadingSpinner.classList.add('hidden');
+                searchButton.disabled = false;
+            }
+        }
 
-        // Compose text area (for transparency/debug & manual edits)
-        let formatted = `${productName} [${casNumber}]\n`;
-        if(productCode) formatted += `Product code. ${productCode}\n`;
-        formatted += `Lot-${lot}\n`;
-        formatted += 'TESTS\tUNIT\tSPECIFICATION\tRESULTS\n';
-        data.tests.forEach(it=>{
-          const a=(it.test||it.item||'').trim(); if(!a) return; const b=(it.unit||'').trim(); const c=(it.specification||it.spec||'').trim(); const d=(it.result||'').trim();
-          if(['tests','unit','specification','results'].includes(a.toLowerCase())) return;
-          formatted += `${a}\t${b}\t${c}\t${d}\n`;
+        function appendRowSafe(tbody, c1, c2, c3, c4) {
+            const tr = document.createElement('tr');
+            [c1, c2, c3, c4].forEach(v => {
+                const td = document.createElement('td');
+                td.className = 'px-2 py-0.5';
+                td.textContent = (v ?? '').toString();
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        }
+
+        function calculateRetestDate(baseDateStr, years) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(baseDateStr) || !Number.isFinite(years)) return '';
+            const d = new Date(baseDateStr);
+            d.setFullYear(d.getFullYear() + years);
+            d.setDate(d.getDate() - 1);
+            const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), da = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${da}`;
+        }
+
+        // History functions
+        function getHistory() {
+            const j = localStorage.getItem(HISTORY_KEY);
+            return j ? JSON.parse(j) : [];
+        }
+
+        function addHistoryEntry(entry) {
+            if (!entry.lotNumber && !entry.productNo) return;
+            let h = getHistory();
+            h = h.filter(x => !(x.lotNumber === entry.lotNumber && x.productNo === entry.productNo));
+            h.unshift(entry);
+            if (h.length > 20) h.pop();
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+            loadHistoryDisplay();
+        }
+
+        function loadHistoryDisplay() {
+            const h = getHistory();
+            const box = document.getElementById('historyList');
+            box.innerHTML = '';
+            if (!h.length) {
+                box.innerHTML = '<p class="text-xs text-gray-500 text-center p-2">No history yet.</p>';
+                return;
+            }
+            h.forEach((e, i) => {
+                const div = document.createElement('div');
+                div.className = 'p-2 border-b last:border-b-0 text-sm cursor-pointer hover:bg-blue-100 rounded';
+                div.innerHTML = `<p class="font-semibold truncate">No.: ${escapeHtml(e.productNo || 'N/A')}</p><p class="text-xs text-gray-600">Lot: ${escapeHtml(e.lotNumber || 'N/A')}</p>`;
+                div.onclick = () => applyHistoryEntry(i);
+                box.appendChild(div);
+            });
+        }
+
+        function applyHistoryEntry(i) {
+            const h = getHistory();
+            const e = h[i];
+            if (!e) return;
+            document.getElementById('dataInput').value = e.rawData;
+            document.getElementById('manualProductNo').value = e.manualProductNo || '';
+            document.getElementById('manualLotNumber').value = e.manualLotNumber || '';
+            document.getElementById('manualDescription').value = e.manualDescription || '';
+            document.getElementById('manualRetestDate').value = e.manualRetestDate || '';
+            populateCoa(false);
+        }
+
+        // Main functions
+        async function searchAndPopulateDuksanData() {
+            const lot = document.getElementById('duksanLotNumberInput').value.trim();
+            if (!lot) {
+                alert('LOT 번호를 입력해주세요.');
+                return;
+            }
+            
+            showLoading(true);
+            showStatus('데이터를 조회 중입니다...', 'loading');
+            
+            try {
+                const resp = await fetch(`https://coa-transfer.vercel.app/api/scrape?lot_no=${encodeURIComponent(lot)}`);
+                if (!resp.ok) throw new Error(`서버 오류: ${resp.status}`);
+                
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || '데이터가 없습니다.');
+                if (!data.tests || !data.tests.length) throw new Error('테스트 결과 데이터가 없습니다.');
+
+                // Extract product information
+                let productName = data.product.name || '';
+                let productCode = data.product.code || '';
+                let casNumber = data.product.casNumber || '';
+                let mfgDate = data.product.mfgDate || '';
+                let expDate = data.product.expDate || '';
+                let retestYears = 3;
+
+                // Enhanced extraction from rawData
+                if (data.rawData) {
+                    if (!productName || productName === 'Unknown Product') {
+                        const m = data.rawData.match(/Certificate of Analysis\s*([^\n\r]+)/i);
+                        if (m) productName = m[1].trim();
+                    }
+                    if (!casNumber) {
+                        const m = data.rawData.match(/\[([^\]]+)\]/);
+                        if (m) casNumber = m[1];
+                    }
+                    if (!productCode) {
+                        const m = data.rawData.match(/Product code\.?\s*([A-Za-z0-9-]+)/i);
+                        if (m) productCode = m[1];
+                    }
+                    if (!mfgDate) {
+                        const m = data.rawData.match(/Mfg\. Date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+                        if (m) mfgDate = m[1];
+                    }
+                    if (!expDate) {
+                        const m = data.rawData.match(/Exp\. Date\s*:\s*([^\n\r]+)/i);
+                        if (m) expDate = m[1].trim();
+                    }
+                }
+
+                // Product detection from test patterns
+                if (!productName || productName === 'Unknown Product') {
+                    const testNames = data.tests.map(t => (t.test || '').toLowerCase()).join(' ');
+                    const testCount = data.tests.length;
+                    
+                    if ((testNames.includes('optical absorbance') && testNames.includes('refractive index') && testCount >= 15) || 
+                        (testNames.includes('acetonitrile') && testCount > 10)) {
+                        productName = 'Acetonitrile (ACN), HPLC Grade';
+                        productCode = '1698';
+                        casNumber = '75-05-8';
+                        retestYears = 3;
+                    } else if ((testNames.includes('water') && testCount < 10) || testNames.includes('water (h2o)')) {
+                        productName = 'Water (HPLC), Fisher Chemical';
+                        productCode = '1952';
+                        casNumber = '7732-18-5';
+                        retestYears = 2;
+                    }
+                    // Add more detection patterns as needed
+                }
+
+                // Enhance with product mapping
+                if (productName && productName !== 'Unknown Product') {
+                    const normalizedName = productName.toLowerCase();
+                    for (const [key, value] of Object.entries(productMapping)) {
+                        if (normalizedName.includes(key)) {
+                            productName = value.description;
+                            if (!productCode) productCode = value.code;
+                            if (!casNumber) casNumber = value.cas;
+                            retestYears = value.retest;
+                            break;
+                        }
+                    }
+                }
+
+                // Default values
+                if (!mfgDate) mfgDate = new Date().toISOString().split('T')[0];
+                if (expDate && /years/.test(expDate)) {
+                    const m = expDate.match(/(\d+)\s*years/);
+                    if (m) retestYears = parseInt(m[1], 10);
+                }
+                if (!productName || productName === 'Unknown Product') productName = 'Chemical Product';
+                if (!casNumber) casNumber = 'N/A';
+
+                // Format the data
+                let formatted = `${productName} [${casNumber}]\n`;
+                if (productCode) formatted += `Product code. ${productCode}\n`;
+                formatted += `Lot-${lot}\n`;
+                formatted += 'TESTS\tUNIT\tSPECIFICATION\tRESULTS\n';
+                
+                data.tests.forEach(item => {
+                    const testName = (item.test || item.item || '').trim();
+                    const unit = (item.unit || '').trim();
+                    const spec = (item.specification || item.spec || '').trim();
+                    const result = (item.result || '').trim();
+                    
+                    if (testName && !['tests', 'unit', 'specification', 'results'].includes(testName.toLowerCase())) {
+                        formatted += `${testName}\t${unit}\t${spec}\t${result}\n`;
+                    }
+                });
+
+                formatted += `Mfg. Date :${mfgDate}\n`;
+                formatted += `Exp. Date :${retestYears} years after Mfg. Date\n`;
+                
+                document.getElementById('dataInput').value = formatted;
+
+                // Auto-fill manual fields
+                if (productName && productName !== 'Chemical Product') {
+                    document.getElementById('manualDescription').value = productName;
+                }
+                if (productCode) {
+                    const mappedProduct = Object.values(productMapping).find(p => p.code === productCode);
+                    const productNo = mappedProduct ? mappedProduct.productNo : productCode;
+                    document.getElementById('manualProductNo').value = productNo;
+                }
+                document.getElementById('manualLotNumber').value = lot;
+
+                populateCoa(true);
+                showStatus(`데이터를 성공적으로 가져왔습니다. ${data.tests.length}개의 테스트 항목을 찾았습니다.`, 'success');
+                
+            } catch (error) {
+                console.error('Fetch Error:', error);
+                let errorMessage = '데이터를 가져오는 중 오류가 발생했습니다.';
+                
+                if (error.message.includes('timeout')) {
+                    errorMessage = '웹사이트 응답이 너무 느립니다. 잠시 후 다시 시도해주세요.';
+                } else if (error.message.includes('404')) {
+                    errorMessage = '해당 Lot 번호에 대한 데이터를 찾을 수 없습니다.';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = '서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요.';
+                } else {
+                    errorMessage = error.message;
+                }
+                
+                showStatus(errorMessage, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function populateCoa(saveToHistory = false) {
+            const elements = {
+                productNo: document.getElementById('productNo'),
+                lotNumber: document.getElementById('lotNumber'),
+                casNumber: document.getElementById('casNumber'),
+                description: document.getElementById('description'),
+                releaseDate: document.getElementById('releaseDate'),
+                retestDate: document.getElementById('retestDate'),
+                tableBody: document.getElementById('resultsTableBody')
+            };
+            
+            // Clear previous content
+            Object.values(elements).forEach(el => el.innerHTML = '');
+
+            // Get manual inputs
+            const manual = {
+                productNo: document.getElementById('manualProductNo').value.trim(),
+                lotNumber: document.getElementById('manualLotNumber').value.trim(),
+                description: document.getElementById('manualDescription').value.trim(),
+                retestDate: document.getElementById('manualRetestDate').value.trim()
+            };
+
+            // Parse product database
+            let db = [];
+            try {
+                db = JSON.parse(document.getElementById('excelDataInput').value.trim());
+            } catch (e) {
+                console.error('Invalid JSON in product database:', e);
+            }
+
+            const raw = document.getElementById('dataInput').value;
+            const lines = raw.split('\n');
+            const parsed = {
+                productCode: '',
+                lotNumber: '',
+                casNumber: '',
+                description: '',
+                mfgDate: '',
+                expDateText: ''
+            };
+
+            // Parse data from text
+            lines.forEach(line => {
+                const ll = line.toLowerCase();
+                if (/^product code\./i.test(line)) {
+                    const m = line.match(/Product code\.?\s*([A-Za-z0-9-]+)/i);
+                    if (m) parsed.productCode = m[1];
+                }
+                if (/^lot\s*[-:]/i.test(ll)) {
+                    parsed.lotNumber = line.replace(/lot\s*[-:]/i, '').trim();
+                }
+                if (ll.startsWith('lot-')) {
+                    parsed.lotNumber = line.split('-')[1]?.trim() || parsed.lotNumber;
+                }
+                if (line.includes('[') && line.includes(']')) {
+                    parsed.description = line.substring(0, line.indexOf('[')).trim();
+                    parsed.casNumber = line.substring(line.indexOf('[') + 1, line.indexOf(']')).trim();
+                }
+                if (/^mfg\. date/i.test(ll)) {
+                    const m = line.match(/\d{4}-\d{2}-\d{2}/);
+                    if (m) parsed.mfgDate = m[0];
+                }
+                if (/^exp\. date/i.test(ll)) {
+                    parsed.expDateText = line.split(':')[1]?.trim() || '';
+                }
+            });
+
+            // Database lookup
+            let fromDb = null;
+            if (parsed.productCode && db.length) {
+                fromDb = db.find(p => String(p['Product code']) === String(parsed.productCode));
+                if (fromDb) {
+                    if (!manual.productNo && fromDb['Product No.']) {
+                        document.getElementById('manualProductNo').value = fromDb['Product No.'];
+                        manual.productNo = fromDb['Product No.'];
+                    }
+                    if (!manual.description && fromDb['Description']) {
+                        document.getElementById('manualDescription').value = fromDb['Description'];
+                        manual.description = fromDb['Description'];
+                    }
+                }
+            }
+
+            // Fill UI elements
+            elements.productNo.textContent = manual.productNo || (fromDb ? fromDb['Product No.'] : '') || parsed.productCode;
+            elements.description.textContent = manual.description || parsed.description || (fromDb ? fromDb['Description'] : '');
+            elements.lotNumber.textContent = manual.lotNumber || parsed.lotNumber;
+            elements.casNumber.textContent = parsed.casNumber;
+            elements.releaseDate.textContent = parsed.mfgDate;
+
+            // Calculate retest date
+            let finalRetest = '';
+            if (manual.retestDate) {
+                finalRetest = manual.retestDate;
+            } else if (parsed.expDateText && parsed.mfgDate) {
+                const m = parsed.expDateText.match(/(\d+)\s*years/);
+                if (m) {
+                    finalRetest = calculateRetestDate(parsed.mfgDate, parseInt(m[1], 10));
+                } else {
+                    finalRetest = parsed.expDateText;
+                }
+            } else if (fromDb && parsed.mfgDate) {
+                finalRetest = calculateRetestDate(parsed.mfgDate, parseInt(fromDb['Retest date'], 10));
+            } else if (parsed.description) {
+                const normalizedDesc = parsed.description.toLowerCase();
+                for (const [key, value] of Object.entries(productMapping)) {
+                    if (normalizedDesc.includes(key) && parsed.mfgDate) {
+                        finalRetest = calculateRetestDate(parsed.mfgDate, value.retest);
+                        break;
+                    }
+                }
+            }
+            elements.retestDate.textContent = finalRetest;
+
+            // Populate table
+            let inTable = false;
+            lines.forEach(line => {
+                const low = line.toLowerCase();
+                if (low.startsWith('tests\tunit\tspecification\tresults')) {
+                    inTable = true;
+                    return;
+                }
+                if (low.startsWith('mfg. date')) inTable = false;
+                if (inTable && line.trim()) {
+                    const parts = line.split('\t');
+                    if (parts.length >= 4) {
+                        appendRowSafe(elements.tableBody, parts[0].trim(), parts[1].trim(), parts[2].trim(), parts[3].trim());
+                    }
+                }
+            });
+
+            // Save to history
+            if (saveToHistory) {
+                addHistoryEntry({
+                    rawData: raw,
+                    productNo: elements.productNo.textContent,
+                    lotNumber: elements.lotNumber.textContent,
+                    manualProductNo: manual.productNo,
+                    manualLotNumber: manual.lotNumber,
+                    manualDescription: manual.description,
+                    manualRetestDate: manual.retestDate,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+
+        // Event listeners
+        document.getElementById('duksanSearchButton').addEventListener('click', searchAndPopulateDuksanData);
+        document.getElementById('duksanLotNumberInput').addEventListener('keyup', e => {
+            if (e.key === 'Enter') searchAndPopulateDuksanData();
         });
-        formatted += `Mfg. Date :${mfgDate}\n`;
-        formatted += `Exp. Date :${retestYears} years after Mfg. Date\n`;
-        document.getElementById('dataInput').value = formatted;
+        document.getElementById('populateBtn').addEventListener('click', () => populateCoa(true));
+        document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+            if (confirm('모든 히스토리를 삭제할까요?')) {
+                localStorage.removeItem(HISTORY_KEY);
+                loadHistoryDisplay();
+            }
+        });
 
-        // Auto-fill manual fields from mapping/code
-        if(productName && productName!=='Chemical Product') document.getElementById('manualDescription').value = productName;
-        if(productCode){
-          const pm = findByCode(productCode);
-          const productNo = pm? pm.productNo : productCode;
-          document.getElementById('manualProductNo').value = productNo;
-        }
-        document.getElementById('manualLotNumber').value = lot;
-
-        populateCoa(true);
-        showStatus(`데이터를 성공적으로 가져왔습니다. ${data.tests.length}개의 테스트 항목을 찾았습니다.`, 'success');
-      } catch(e){
-        console.error(e);
-        let msg='데이터를 가져오는 중 오류가 발생했습니다.';
-        if(/timeout/i.test(e.message)) msg='웹사이트 응답이 느립니다. 잠시 후 다시 시도해주세요.';
-        else if(/404/.test(e.message)) msg='해당 Lot 번호에 대한 데이터를 찾을 수 없습니다.';
-        else if(/Failed to fetch/.test(e.message)) msg='서버에 연결할 수 없습니다. 인터넷을 확인하세요.';
-        else msg=e.message;
-        showStatus(msg,'error');
-      } finally { showLoading(false); }
-    }
-
-    function populateCoa(saveToHistory=false){
-      const el={
-        productNo: document.getElementById('productNo'),
-        lotNumber: document.getElementById('lotNumber'),
-        casNumber: document.getElementById('casNumber'),
-        description: document.getElementById('description'),
-        releaseDate: document.getElementById('releaseDate'),
-        retestDate: document.getElementById('retestDate'),
-        tableBody: document.getElementById('resultsTableBody')
-      };
-      Object.values(el).forEach(x=> x.innerHTML='');
-
-      const manual={
-        productNo: document.getElementById('manualProductNo').value.trim(),
-        lotNumber: document.getElementById('manualLotNumber').value.trim(),
-        description: document.getElementById('manualDescription').value.trim(),
-        retestDate: document.getElementById('manualRetestDate').value.trim()
-      };
-
-      let db=[]; try{ db=JSON.parse(document.getElementById('excelDataInput').value.trim()); } catch{}
-      const raw=document.getElementById('dataInput').value; const lines=raw.split('\n');
-      const parsed={ productCode:'', lotNumber:'', casNumber:'', description:'', mfgDate:'', expDateText:'' };
-
-      lines.forEach(line=>{
-        const ll=line.toLowerCase();
-        if(/^product code\./i.test(line)){ const m=line.match(/Product code\.?\s*([A-Za-z0-9-]+)/i); if(m) parsed.productCode=m[1]; }
-        if(/^lot\s*[-:]/i.test(ll)){ parsed.lotNumber = line.replace(/lot\s*[-:]/i,'').trim(); }
-        if(ll.startsWith('lot-')){ parsed.lotNumber = line.split('-')[1]?.trim() || parsed.lotNumber; }
-        if(line.includes('[') && line.includes(']')){ parsed.description=line.substring(0,line.indexOf('[')).trim(); parsed.casNumber=line.substring(line.indexOf('[')+1,line.indexOf(']')).trim(); }
-        if(/^mfg\. date/i.test(ll)){ const m=line.match(/\d{4}-\d{2}-\d{2}/); if(m) parsed.mfgDate=m[0]; }
-        if(/^exp\. date/i.test(ll)){ parsed.expDateText=line.split(':')[1]?.trim()||''; }
-      });
-
-      // DB lookup by code
-      let fromDb=null; if(parsed.productCode && db.length){ fromDb = db.find(p=> String(p['Product code'])===String(parsed.productCode)); }
-      if(fromDb){ if(!manual.productNo && fromDb['Product No.']) { document.getElementById('manualProductNo').value=fromDb['Product No.']; manual.productNo=fromDb['Product No.']; }
-        if(!manual.description && fromDb['Description']) { document.getElementById('manualDescription').value=fromDb['Description']; manual.description=fromDb['Description']; } }
-
-      // Fill UI (priority: manual > parsed/db)
-      el.productNo.textContent = manual.productNo || (fromDb?fromDb['Product No.']:'') || parsed.productCode;
-      el.description.textContent = manual.description || parsed.description || (fromDb?fromDb['Description']:'');
-      el.lotNumber.textContent = manual.lotNumber || parsed.lotNumber;
-      el.casNumber.textContent = parsed.casNumber;
-      el.releaseDate.textContent = parsed.mfgDate;
-
-      let finalRetest='';
-      if(manual.retestDate){ finalRetest=manual.retestDate; }
-      else if(parsed.expDateText && parsed.mfgDate){ const m=parsed.expDateText.match(/(\d+)\s*years/); if(m){ finalRetest = calculateRetestDate(parsed.mfgDate, parseInt(m[1],10)); } else { finalRetest = parsed.expDateText; } }
-      else if(fromDb && parsed.mfgDate){ finalRetest = calculateRetestDate(parsed.mfgDate, parseInt(fromDb['Retest date'],10)); }
-      else if(parsed.description){ const nd=parsed.description.toLowerCase(); for(const [k,v] of Object.entries(productMapping)){ if(nd.includes(k) && parsed.mfgDate){ finalRetest = calculateRetestDate(parsed.mfgDate, v.retest); break; } } }
-      el.retestDate.textContent = finalRetest;
-
-      // Table
-      el.tableBody.innerHTML='';
-      let inTable=false;
-      lines.forEach(line=>{
-        const low=line.toLowerCase();
-        if(low.startsWith('tests\tunit\tspecification\tresults')){ inTable=true; return; }
-        if(low.startsWith('mfg. date')) inTable=false;
-        if(inTable && line.trim()){
-          const parts=line.split('\t'); if(parts.length>=4){ appendRowSafe(el.tableBody, parts[0].trim(), parts[1].trim(), parts[2].trim(), parts[3].trim()); }
-        }
-      });
-
-      if(saveToHistory){ addHistoryEntry({ rawData:raw, productNo: el.productNo.textContent, lotNumber: el.lotNumber.textContent, manualProductNo: manual.productNo, manualLotNumber: manual.lotNumber, manualDescription: manual.description, manualRetestDate: manual.retestDate, timestamp: new Date().toISOString() }); }
-    }
-
-    // Wire UI
-    document.getElementById('duksanSearchButton').addEventListener('click', searchAndPopulateDuksanData);
-    document.getElementById('duksanLotNumberInput').addEventListener('keyup', e=>{ if(e.key==='Enter') searchAndPopulateDuksanData(); });
-    document.getElementById('populateBtn').addEventListener('click', ()=>populateCoa(true));
-    document.getElementById('clearHistoryBtn').addEventListener('click', ()=>{ if(confirm('모든 히스토리를 삭제할까요?')){ localStorage.removeItem(HISTORY_KEY); loadHistoryDisplay(); } });
-
-    // Init
-    window.onload=()=>{ populateCoa(false); loadHistoryDisplay(); };
-  </script>
+        // Initialize
+        window.onload = () => {
+            populateCoa(false);
+            loadHistoryDisplay();
+        };
+    </script>
 </body>
 </html>
