@@ -35,25 +35,30 @@ export default async function handler(request, response) {
     const targetUrl = `https://www.duksan.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
     console.log("Target URL:", targetUrl);
 
-    // 최적화된 HTTPS agent
+    // HTTPS agent 설정
     const httpsAgent = new https.Agent({
       keepAlive: false,
-      timeout: 15000,
+      timeout: 20000, // 타임아웃 20초로 증가
       rejectUnauthorized: false,
     });
 
     // 요청 설정
     const config = {
       httpsAgent: httpsAgent,
-      timeout: 15000,
+      timeout: 20000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
         'Cache-Control': 'no-cache',
         'Connection': 'close',
+        'Referer': 'https://www.duksan.kr/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
       },
-      maxRedirects: 3,
+      maxRedirects: 5,
       validateStatus: function (status) {
         return status >= 200 && status < 500;
       }
@@ -64,8 +69,8 @@ export default async function handler(request, response) {
       axiosResponse = await axios.get(targetUrl, config);
     } catch (directError) {
       console.log('Direct request failed:', directError.message);
-      // 프록시 URL 시도
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+      // 프록시 URL 시도 (CORS 우회)
+      const proxyUrl = `https://cors-anywhere.herokuapp.com/${targetUrl}`;
       try {
         axiosResponse = await axios.get(proxyUrl, config);
       } catch (proxyError) {
@@ -90,24 +95,25 @@ export default async function handler(request, response) {
     const $ = cheerio.load(axiosResponse.data);
     let results = [];
 
-    // 테이블 데이터 추출
-    $('table tr').each((index, element) => {
-      const $row = $(element);
-      const $cells = $row.find('td');
-      
-      if ($cells.length >= 4) {
-        const rowData = {
-          test: $cells.eq(0).text().trim(),
-          unit: $cells.eq(1).text().trim(),
-          specification: $cells.eq(2).text().trim(),
-          result: $cells.eq(3).text().trim(),
-        };
+    // 테이블 데이터 추출 - 다양한 테이블 구조를 고려
+    $('table').each((tableIndex, table) => {
+      $(table).find('tr').each((index, element) => {
+        const $row = $(element);
+        const $cells = $row.find('td, th');
         
-        if (rowData.test && rowData.test !== 'TESTS' && rowData.test !== 'UNIT' && 
-            rowData.test !== 'SPECIFICATION' && rowData.test !== 'RESULTS') {
-          results.push(rowData);
+        if ($cells.length >= 4) {
+          const rowData = {
+            test: $cells.eq(0).text().trim(),
+            unit: $cells.eq(1).text().trim(),
+            specification: $cells.eq(2).text().trim(),
+            result: $cells.eq(3).text().trim(),
+          };
+          
+          if (isValidTestRow(rowData)) {
+            results.push(rowData);
+          }
         }
-      }
+      });
     });
 
     // 테이블 데이터가 없을 경우 대체 파싱 시도
@@ -162,7 +168,8 @@ export default async function handler(request, response) {
     console.error('Error details:', {
       name: error.name,
       message: error.message,
-      code: error.code
+      code: error.code,
+      stack: error.stack
     });
 
     let statusCode = 500;
@@ -174,12 +181,16 @@ export default async function handler(request, response) {
     } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
       statusCode = 503;
       errorMessage = 'Cannot connect to the website. It might be down or blocking requests.';
+    } else if (error.response) {
+      statusCode = error.response.status;
+      errorMessage = `The website returned an error: ${error.response.status} ${error.response.statusText}`;
     }
 
     response.status(statusCode).json({ 
       success: false,
       error: 'Failed to fetch analysis certificate',
-      message: errorMessage
+      message: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
@@ -188,12 +199,14 @@ export default async function handler(request, response) {
 function extractProductName($, html) {
   let productName = '';
   
-  const coaMatch = html.match(/Certificate of Analysis\s*([^\n\r]+)/i);
+  // Certificate of Analysis 제목 다음에 오는 텍스트를 찾음
+  const coaMatch = html.match(/Certificate of Analysis\s*[-:]?\s*([^\n\r<]+)/i);
   if (coaMatch) {
     productName = coaMatch[1].trim();
   }
   
   if (!productName) {
+    // h1, h2, h3, b, strong 태그에서 제품명 찾기
     $('h1, h2, h3, b, strong').each((i, el) => {
       const text = $(el).text().trim();
       if (text && !text.includes('Certificate') && !text.includes('Analysis') && 
@@ -207,6 +220,7 @@ function extractProductName($, html) {
   }
 
   if (!productName) {
+    // 테이블 앞의 요소에서 제품명 찾기
     const firstTable = $('table').first();
     const prevElements = firstTable.prevAll();
     prevElements.each((i, el) => {
@@ -219,12 +233,17 @@ function extractProductName($, html) {
     });
   }
 
+  // 제품명에서 불필요한 공백과 개행 제거
+  if (productName) {
+    productName = productName.replace(/\s+/g, ' ').trim();
+  }
+
   return productName;
 }
 
 function extractProductCode(html) {
   let productCode = '';
-  const codeMatch = html.match(/Product code\.?\s*(\d+)/i);
+  const codeMatch = html.match(/Product code\.?\s*[.:]?\s*(\d+)/i);
   if (codeMatch) {
     productCode = codeMatch[1];
   } else {
@@ -250,15 +269,27 @@ function extractMfgDate(html) {
   const mfgMatch = html.match(/Mfg\. Date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
   if (mfgMatch) {
     mfgDate = mfgMatch[1];
+  } else {
+    // 대체 패턴: Manufacturing Date 등
+    const altMfgMatch = html.match(/(?:Manufacturing|Mfg|Made).*?Date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2})/i);
+    if (altMfgMatch) {
+      mfgDate = altMfgMatch[1];
+    }
   }
   return mfgDate;
 }
 
 function extractExpDate(html) {
   let expDate = '';
-  const expMatch = html.match(/Exp\. Date\s*:\s*([^\n\r]+)/i);
+  const expMatch = html.match(/Exp\. Date\s*:\s*([^\n\r<]+)/i);
   if (expMatch) {
     expDate = expMatch[1].trim();
+  } else {
+    // 대체 패턴: Expiry Date, Expiration Date 등
+    const altExpMatch = html.match(/(?:Expiry|Expiration|Exp)\.?\s*Date\s*[:\-]?\s*([^\n\r<]+)/i);
+    if (altExpMatch) {
+      expDate = altExpMatch[1].trim();
+    }
   }
   return expDate;
 }
@@ -294,19 +325,21 @@ function parseAlternativeTests($) {
 function isValidTestRow(item) {
   return item.test && 
          item.test.length > 1 && 
-         !item.test.match(/^(TESTS|UNIT|SPECIFICATION|RESULTS|항목|시험항목)$/i) &&
+         !item.test.match(/^(TESTS|UNIT|SPECIFICATION|RESULTS|항목|시험항목|Test|Item)$/i) &&
          !item.test.includes('TESTS') &&
          !item.test.includes('UNIT') &&
          !item.test.includes('SPECIFICATION') &&
-         !item.test.includes('RESULTS');
+         !item.test.includes('RESULTS') &&
+         !item.test.includes('항목') &&
+         !item.test.includes('시험항목');
 }
 
 function cleanExtractedData(results) {
   return results.map(item => ({
-    test: item.test.replace(/[\n\r\t]+/g, ' ').trim(),
-    unit: item.unit.replace(/[\n\r\t]+/g, ' ').trim(),
-    specification: item.specification.replace(/[\n\r\t]+/g, ' ').trim(),
-    result: item.result.replace(/[\n\r\t]+/g, ' ').trim(),
+    test: item.test.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim(),
+    unit: item.unit.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim(),
+    specification: item.specification.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim(),
+    result: item.result.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim(),
   })).filter(item => 
     item.test && 
     item.test.length > 1 && 
