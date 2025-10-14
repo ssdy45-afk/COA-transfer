@@ -1,6 +1,9 @@
-const fetch = require('node-fetch');
+const axios = require('axios');
+const https = require('https');
+const cheerio = require('cheerio');
 
 exports.handler = async function(event, context) {
+  // CORS 설정
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -16,405 +19,330 @@ exports.handler = async function(event, context) {
   }
 
   const { lot_no } = event.queryStringParameters;
+  console.log("Received request for lot_no:", lot_no);
 
   if (!lot_no) {
     return {
       statusCode: 400,
       headers,
-      body: JSON.stringify({ error: 'Lot number is required' })
+      body: JSON.stringify({ 
+        success: false,
+        error: 'lot_no query parameter is required' 
+      })
+    };
+  }
+
+  if (!/^[A-Z0-9]+$/.test(lot_no)) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ 
+        success: false,
+        error: 'Invalid lot number format' 
+      })
     };
   }
 
   try {
-    const url = `https://www.duksan.com/coa/${lot_no}`;
+    console.log("Fetching analysis certificate...");
     
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      timeout: 10000
+    const targetUrl = `https://www.duksan.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
+    console.log("Target URL:", targetUrl);
+
+    // 최적화된 HTTPS agent
+    const httpsAgent = new https.Agent({
+      keepAlive: false,
+      timeout: 15000,
+      rejectUnauthorized: false,
     });
 
-    if (!response.ok) {
+    // 요청 설정
+    const config = {
+      httpsAgent: httpsAgent,
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Connection': 'close',
+      },
+      maxRedirects: 3,
+      validateStatus: function (status) {
+        return status >= 200 && status < 500;
+      }
+    };
+
+    let response;
+    try {
+      response = await axios.get(targetUrl, config);
+    } catch (directError) {
+      console.log('Direct request failed:', directError.message);
+      // 프록시 URL 시도
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+      try {
+        response = await axios.get(proxyUrl, config);
+      } catch (proxyError) {
+        throw new Error(`All request methods failed: ${directError.message}`);
+      }
+    }
+
+    console.log("Response received, status:", response.status);
+
+    if (response.status === 404) {
       return {
         statusCode: 404,
         headers,
         body: JSON.stringify({ 
-          error: 'COA not found',
-          details: `HTTP ${response.status}: ${response.statusText}`
+          success: false,
+          error: 'Analysis certificate not found',
+          message: `No certificate found for lot number: ${lot_no}`
         })
       };
     }
 
-    const html = await response.text();
+    if (response.status !== 200) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const $ = cheerio.load(response.data);
+    let results = [];
+
+    // 테이블 데이터 추출
+    $('table tr').each((index, element) => {
+      const $row = $(element);
+      const $cells = $row.find('td');
+      
+      if ($cells.length >= 4) {
+        const rowData = {
+          test: $cells.eq(0).text().trim(),
+          unit: $cells.eq(1).text().trim(),
+          specification: $cells.eq(2).text().trim(),
+          result: $cells.eq(3).text().trim(),
+        };
+        
+        if (rowData.test && rowData.test !== 'TESTS' && rowData.test !== 'UNIT' && 
+            rowData.test !== 'SPECIFICATION' && rowData.test !== 'RESULTS') {
+          results.push(rowData);
+        }
+      }
+    });
+
+    // 테이블 데이터가 없을 경우 대체 파싱 시도
+    if (results.length === 0) {
+      console.log('No results from table parsing, trying alternative methods');
+      results = parseAlternativeTests($);
+    }
+
+    // 데이터 정제
+    results = cleanExtractedData(results);
+
+    // 제품명 추출
+    let productName = extractProductName($, response.data);
     
-    // 실제 파싱 로직 구현
-    const product = {
-      name: extractProductName(html),
-      code: extractProductCode(html),
-      casNumber: extractCasNumber(html),
-      mfgDate: extractMfgDate(html),
-      expDate: extractExpDate(html)
+    // 제품 코드 추출
+    let productCode = extractProductCode(response.data);
+
+    // CAS 번호 추출
+    let casNumber = extractCasNumber(response.data);
+
+    // 제조일자 추출
+    let mfgDate = extractMfgDate(response.data);
+
+    // 유통기한 추출
+    let expDate = extractExpDate(response.data);
+
+    // 원본 HTML의 일부를 rawData로 저장 (디버깅용)
+    const rawData = $('body').text().substring(0, 2000);
+
+    const responseData = {
+      success: true,
+      product: {
+        name: productName || 'Unknown Product',
+        code: productCode,
+        casNumber: casNumber,
+        lotNumber: lot_no,
+        mfgDate: mfgDate,
+        expDate: expDate || '3 years after Mfg. Date'
+      },
+      tests: results,
+      rawData: rawData,
+      count: results.length,
+      source: 'duksan-direct'
     };
 
-    const tests = extractTestResults(html);
-
+    console.log(`Successfully parsed: ${productName} (Code: ${productCode}, CAS: ${casNumber}), ${results.length} tests`);
+    
     return {
       statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        product,
-        tests,
-        rawData: html.substring(0, 1000),
-        source: 'netlify-function'
-      })
+      headers: {
+        ...headers,
+        'Cache-Control': 's-maxage=3600, stale-while-revalidate=7200'
+      },
+      body: JSON.stringify(responseData)
     };
 
   } catch (error) {
-    console.error('Netlify Function Error:', error);
-    
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code
+    });
+
+    let statusCode = 500;
+    let errorMessage = error.message;
+
+    if (error.code === 'ECONNABORTED') {
+      statusCode = 408;
+      errorMessage = 'The website took too long to respond. Please try again.';
+    } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+      statusCode = 503;
+      errorMessage = 'Cannot connect to the website. It might be down or blocking requests.';
+    }
+
     return {
-      statusCode: 500,
+      statusCode,
       headers,
       body: JSON.stringify({ 
-        error: 'Failed to fetch COA data',
-        details: error.message,
-        source: 'netlify-function'
+        success: false,
+        error: 'Failed to fetch analysis certificate',
+        message: errorMessage
       })
     };
   }
 };
 
-// 실제 파싱 함수 구현
-function extractProductName(html) {
-  // 다양한 패턴으로 제품명 추출
-  const patterns = [
-    /<title>([^<]+)<\/title>/i,
-    /<h1[^>]*>([^<]+)<\/h1>/i,
-    /Certificate of Analysis\s*[-–]\s*([^<]+)/i,
-    /<div[^>]*class\s*=\s*["'][^"']*product-name[^"]*["'][^>]*>([^<]+)<\/div>/i,
-    /REAGENTS\s+DUSAN\s+Certificate of Analysis\s+([^\n\r<]+)/i,
-    /n-Haptane\s*([^<]*)/i, // n-Heptane 특화 패턴
-    /<strong>([^<]+)<\/strong>\s*Certificate of Analysis/i
-  ];
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match) {
-      let name = match[1]
-        .replace('Certificate of Analysis', '')
-        .replace('COA', '')
-        .replace('REAGENTS', '')
-        .replace('DUSAN', '')
-        .trim();
-      if (name && name !== '') return name;
-    }
+// 헬퍼 함수들
+function extractProductName($, html) {
+  let productName = '';
+  
+  // 방법 1: Certificate of Analysis 다음 텍스트
+  const coaMatch = html.match(/Certificate of Analysis\s*([^\n\r]+)/i);
+  if (coaMatch) {
+    productName = coaMatch[1].trim();
+  }
+  
+  // 방법 2: h1, h2 태그에서 추출
+  if (!productName) {
+    $('h1, h2, h3, b, strong').each((i, el) => {
+      const text = $(el).text().trim();
+      if (text && !text.includes('Certificate') && !text.includes('Analysis') && 
+          !text.includes('REAGENTS') && !text.includes('DUKSAN') && text.length > 2) {
+        if (!/^\d+$/.test(text)) {
+          productName = text;
+          return false;
+        }
+      }
+    });
   }
 
-  return 'Chemical Product';
+  // 방법 3: 테이블 앞의 텍스트에서 추출
+  if (!productName) {
+    const firstTable = $('table').first();
+    const prevElements = firstTable.prevAll();
+    prevElements.each((i, el) => {
+      const text = $(el).text().trim();
+      if (text && text.length > 2 && !text.includes('Certificate') && 
+          !text.includes('REAGENTS') && !/^\d+$/.test(text)) {
+        productName = text;
+        return false;
+      }
+    });
+  }
+
+  return productName;
 }
 
 function extractProductCode(html) {
-  const patterns = [
-    /Product code\.?\s*([A-Za-z0-9-]+)/i,
-    /Product\s*Code:?\s*([A-Za-z0-9-]+)/i,
-    /Item\s*No\.?:?\s*([A-Za-z0-9-]+)/i,
-    /Product code<\/td>\s*<td[^>]*>([^<]+)</i,
-    /Product code[^<]*<[^>]*>([A-Za-z0-9-]+)/i
-  ];
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match) return match[1].trim();
+  let productCode = '';
+  const codeMatch = html.match(/Product code\.?\s*(\d+)/i);
+  if (codeMatch) {
+    productCode = codeMatch[1];
+  } else {
+    const altCodeMatch = html.match(/(?:code|Code)\s*[.:]?\s*(\d+)/i);
+    if (altCodeMatch) {
+      productCode = altCodeMatch[1];
+    }
   }
-  return '';
+  return productCode;
 }
 
 function extractCasNumber(html) {
-  // CAS 번호 추출
-  const casMatch = html.match/(\d{2,7}-\d{2}-\d{1})/);
-  return casMatch ? casMatch[1] : '';
+  let casNumber = '';
+  const casMatch = html.match(/\[([^\]]+)\]/);
+  if (casMatch) {
+    casNumber = casMatch[1];
+  }
+  return casNumber;
 }
 
 function extractMfgDate(html) {
-  // 제조일자 추출
-  const mfgMatch = html.match(/Manufacturing Date:?\s*(\d{4}-\d{2}-\d{2})/i);
-  return mfgMatch ? mfgMatch[1] : new Date().toISOString().split('T')[0];
+  let mfgDate = '';
+  const mfgMatch = html.match(/Mfg\. Date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+  if (mfgMatch) {
+    mfgDate = mfgMatch[1];
+  }
+  return mfgDate;
 }
 
 function extractExpDate(html) {
-  // 만료일자 추출
-  const expMatch = html.match(/Expiration Date:?\s*(\d{4}-\d{2}-\d{2})/i);
-  return expMatch ? expMatch[1] : '';
+  let expDate = '';
+  const expMatch = html.match(/Exp\. Date\s*:\s*([^\n\r]+)/i);
+  if (expMatch) {
+    expDate = expMatch[1].trim();
+  }
+  return expDate;
 }
 
-function extractTestResults(html) {
-  const tests = [];
-  console.log('Starting HTML parsing for test results...');
+function parseAlternativeTests($) {
+  const results = [];
   
-  // 먼저 테이블 구조로 파싱 시도
-  const tableTests = extractTestsFromTable(html);
-  if (tableTests.length > 0) {
-    console.log(`Found ${tableTests.length} tests from table parsing`);
-    return tableTests;
-  }
-  
-  // 테이블 파싱 실패 시 텍스트 기반 파싱
-  const textTests = extractTestsFromText(html);
-  if (textTests.length > 0) {
-    console.log(`Found ${textTests.length} tests from text parsing`);
-    return textTests;
-  }
-  
-  // 모두 실패 시 모의 데이터 반환 (원본 DUKSAN 데이터 기반)
-  console.log('Using mock data as fallback');
-  return getCompleteMockTests(html);
-}
-
-function extractTestsFromTable(html) {
-  const tests = [];
-  
-  // 다양한 테이블 패턴 시도
-  const tablePatterns = [
-    /<table[^>]*>([\s\S]*?)<\/table>/i,
-    /<div[^>]*class\s*=\s*["'][^"']*table[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
-    /<div[^>]*id\s*=\s*["'][^"']*table[^"']*["'][^>]*>([\s\S]*?)<\/div>/i
-  ];
-  
-  let tableContent = '';
-  for (const pattern of tablePatterns) {
-    const match = html.match(pattern);
-    if (match && match[1]) {
-      tableContent = match[1];
-      console.log('Found table with pattern:', pattern);
-      break;
-    }
-  }
-  
-  if (!tableContent) {
-    console.log('No table content found');
-    return tests;
-  }
-  
-  // 행 파싱
-  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  let rowMatch;
-  let headerSkipped = false;
-  
-  while ((rowMatch = rowRegex.exec(tableContent)) !== null) {
-    const rowHtml = rowMatch[1];
-    const cells = extractTableCells(rowHtml);
+  // 테이블이 다른 구조일 경우를 대비한 다양한 파싱 방법
+  $('tr').each((index, element) => {
+    const $row = $(element);
+    const cells = [];
     
-    // 헤더 행 건너뛰기
-    if (!headerSkipped && cells.length >= 4) {
-      const firstCell = cells[0].toLowerCase();
-      if (firstCell.includes('tests') || firstCell.includes('test') || 
-          firstCell.includes('item') || firstCell.includes('항목')) {
-        headerSkipped = true;
-        console.log('Skipped header row:', cells);
-        continue;
-      }
-    }
+    $row.find('td, th').each((i, cell) => {
+      cells.push($(cell).text().trim());
+    });
     
-    // 유효한 데이터 행 처리
-    if (cells.length >= 4 && isValidTestData(cells)) {
-      const testData = {
-        test: cleanText(cells[0]),
-        unit: cleanText(cells[1]),
-        specification: cleanText(cells[2]),
-        result: cleanText(cells[3])
+    if (cells.length >= 4) {
+      const testItem = {
+        test: cells[0],
+        unit: cells[1],
+        specification: cells[2],
+        result: cells[3]
       };
       
-      tests.push(testData);
-      console.log('Added test:', testData.test);
-    }
-  }
-  
-  return tests;
-}
-
-function extractTableCells(rowHtml) {
-  const cells = [];
-  
-  // td/th 태그로 추출
-  const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
-  let cellMatch;
-  
-  while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
-    const cellContent = cleanCellContent(cellMatch[1]);
-    if (cellContent !== '') {
-      cells.push(cellContent);
-    }
-  }
-  
-  // td/th 없을 경우 div나 span으로 시도
-  if (cells.length === 0) {
-    const divRegex = /<div[^>]*>([\s\S]*?)<\/div>/gi;
-    let divMatch;
-    
-    while ((divMatch = divRegex.exec(rowHtml)) !== null) {
-      const divContent = cleanCellContent(divMatch[1]);
-      if (divContent !== '') {
-        cells.push(divContent);
+      // 유효한 테스트 행인지 확인
+      if (isValidTestRow(testItem)) {
+        results.push(testItem);
       }
     }
-  }
+  });
   
-  return cells;
+  return results;
 }
 
-function extractTestsFromText(html) {
-  const tests = [];
-  
-  // HTML 태그 제거
-  const cleanHtml = html
-    .replace(/<[^>]*>/g, '\n')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  
-  const lines = cleanHtml.split('\n').map(line => line.trim()).filter(line => line !== '');
-  
-  let inTable = false;
-  let tableHeaderFound = false;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    // 테이블 시작 지점 찾기
-    if (!inTable && (
-        line.match(/TESTS\s+UNIT\s+SPECIFICATION\s+RESULTS/i) ||
-        line.match(/시험항목\s+단위\s+규격\s+결과/i) ||
-        line.includes('Appearance') && line.includes('Assay')
-    )) {
-      inTable = true;
-      tableHeaderFound = true;
-      console.log('Found table start:', line);
-      continue;
-    }
-    
-    // 테이블 종료 지점
-    if (inTable && (
-        line.includes('Mfg. Date') ||
-        line.includes('Exp. Date') ||
-        line.includes('Test Method') ||
-        line.includes('제조일자') ||
-        line.includes('유통기한')
-    )) {
-      console.log('Found table end:', line);
-      break;
-    }
-    
-    // 테이블 내 데이터 처리
-    if (inTable) {
-      // 탭 또는 3개 이상의 공백으로 분리
-      const parts = line.split(/\t|\s{3,}/).filter(part => part.trim() !== '');
-      
-      if (parts.length >= 4 && !isHeaderRow(parts)) {
-        const testData = {
-          test: parts[0].trim(),
-          unit: parts[1]?.trim() || '-',
-          specification: parts[2]?.trim() || '',
-          result: parts[3]?.trim() || ''
-        };
-        
-        if (isValidTestData([testData.test, testData.unit, testData.specification, testData.result])) {
-          tests.push(testData);
-          console.log('Added test from text:', testData.test);
-        }
-      } else if (parts.length === 3 && tests.length > 0) {
-        // 3열 데이터인 경우 (결과가 없는 경우) 마지막 테스트에 결과 추가
-        const lastTest = tests[tests.length - 1];
-        if (lastTest && !lastTest.result) {
-          lastTest.result = parts[2]?.trim() || '';
-        }
-      }
-    }
-  }
-  
-  return tests;
+function isValidTestRow(item) {
+  return item.test && 
+         item.test.length > 1 && 
+         !item.test.match(/^(TESTS|UNIT|SPECIFICATION|RESULTS|항목|시험항목)$/i) &&
+         !item.test.includes('TESTS') &&
+         !item.test.includes('UNIT') &&
+         !item.test.includes('SPECIFICATION') &&
+         !item.test.includes('RESULTS');
 }
 
-function getCompleteMockTests(html) {
-  // 제공된 원본 데이터 기반으로 완전한 테스트 목록 반환
-  console.log('Using complete mock data based on provided COA');
-  
-  // HTML에서 제품 정보 추출하여 적절한 모의 데이터 선택
-  if (html.includes('Acetonitrile') || html.includes('75-05-8') || html.includes('1698')) {
-    return [
-      { test: 'Appearance', unit: '-', specification: 'Clear, colorless liquid', result: 'Clear, colorless liquid' },
-      { test: 'Absorbance', unit: 'Pass/Fail', specification: 'Pass test', result: 'Pass test' },
-      { test: 'Assay', unit: '%', specification: '≥ 99.95', result: '99.99' },
-      { test: 'Color', unit: 'APHA', specification: '≤ 5', result: '2' },
-      { test: 'Density at 25 Degrees C', unit: 'GM/ML', specification: 'Inclusive Between 0.775~0.780', result: '0.777' },
-      { test: 'Evaporation residue', unit: 'ppm', specification: '≤ 1', result: '≤ 1' },
-      { test: 'Fluorescence Background', unit: 'Pass/Fail', specification: 'To pass test', result: 'Pass test' },
-      { test: 'Identification', unit: 'Pass/Fail', specification: 'To pass test', result: 'Pass test' },
-      { test: 'LC Gradient Suitability', unit: 'Pass/Fail', specification: 'To pass test', result: 'Pass test' },
-      { test: 'Optical Absorbance 190 nm', unit: 'Abs.unit', specification: '≤ 1.00', result: '0.49' },
-      { test: 'Optical Absorbance 195 nm', unit: 'Abs.unit', specification: '≤ 0.15', result: '0.06' },
-      { test: 'Optical Absorbance 200 nm', unit: 'Abs.unit', specification: '≤ 0.07', result: '0.02' },
-      { test: 'Optical Absorbance 205 nm', unit: 'Abs.unit', specification: '≤ 0.05', result: '0.02' },
-      { test: 'Optical Absorbance 210 nm', unit: 'Abs.unit', specification: '≤ 0.04', result: '0.015' },
-      { test: 'Optical Absorbance 220 nm', unit: 'Abs.unit', specification: '≤ 0.02', result: '0.008' },
-      { test: 'Optical Absorbance 254 nm', unit: 'Abs.unit', specification: '≤ 0.01', result: '0.001' },
-      { test: 'Refractive index @ 25 Deg C', unit: '-', specification: 'Inclusive Between 1.3405~1.3425', result: '1.342' },
-      { test: 'Titratable Acid', unit: 'mEq/g', specification: '≤ 0.008', result: '0.006' },
-      { test: 'Titratable Base', unit: 'mEq/g', specification: '≤ 0.0006', result: '0.00001' },
-      { test: 'Water (H2O)', unit: '%', specification: '≤ 0.01', result: '0.002' }
-    ];
-  }
-  
-  // 기본 모의 데이터 (n-Heptane 등 다른 제품)
-  return [
-    { test: 'Color (APHA)', unit: '-', specification: 'Max. 10', result: '3' },
-    { test: 'Optical Absorbance 254 nm', unit: '-', specification: 'Max. 0.014', result: '0.003' },
-    { test: 'Optical Absorbance 215 nm', unit: '-', specification: 'Max. 0.20', result: '0.54' },
-    { test: 'Optical Absorbance 200 nm', unit: '-', specification: 'Max. 0.75', result: '0.54' },
-    { test: 'Fluorescence Background (as Quinine Suitable)', unit: '-', specification: 'To pass test', result: 'P.T.' },
-    { test: 'Residue after evaporation', unit: 'ppm', specification: 'Max. 5', result: '<1' },
-    { test: 'Water', unit: '%', specification: 'Max. 0.02', result: '0.003' },
-    { test: 'Assay', unit: '%', specification: 'Min. 96.0', result: '99.4' }
-  ];
-}
-
-// 헬퍼 함수들
-function cleanCellContent(content) {
-  return content
-    .replace(/<[^>]*>/g, '') // HTML 태그 제거
-    .replace(/&nbsp;/g, ' ') // &nbsp; 제거
-    .replace(/\s+/g, ' ') // 연속 공백 제거
-    .trim();
-}
-
-function cleanText(text) {
-  return text
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function isValidTestData(cells) {
-  const testName = cells[0].toLowerCase();
-  const invalidPatterns = [
-    'tests', 'unit', 'specification', 'results', 
-    'test item', '항목', '시험항목', 'spec', 'result'
-  ];
-  
-  const isValid = !invalidPatterns.some(pattern => testName.includes(pattern)) && 
-         testName.length > 0 &&
-         !/^\s*$/.test(testName);
-  
-  if (!isValid) {
-    console.log('Invalid test row skipped:', cells[0]);
-  }
-  
-  return isValid;
-}
-
-function isHeaderRow(parts) {
-  const firstCell = parts[0].toLowerCase();
-  return firstCell.includes('tests') || firstCell.includes('test') || firstCell.includes('item');
+function cleanExtractedData(results) {
+  return results.map(item => ({
+    test: item.test.replace(/[\n\r\t]+/g, ' ').trim(),
+    unit: item.unit.replace(/[\n\r\t]+/g, ' ').trim(),
+    specification: item.specification.replace(/[\n\r\t]+/g, ' ').trim(),
+    result: item.result.replace(/[\n\r\t]+/g, ' ').trim(),
+  })).filter(item => 
+    item.test && 
+    item.test.length > 1 && 
+    !item.test.match(/^(TESTS|UNIT|SPECIFICATION|RESULTS)$/i)
+  );
 }
