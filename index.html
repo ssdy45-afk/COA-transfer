@@ -445,6 +445,7 @@ Exp. Date :3 years after Mfg. Date
             <!-- COA Display Section -->
             <div class="lg:w-2/3">
                 <div id="coa-container" class="bg-white p-8 sm:p-12 rounded-lg shadow-lg flex flex-col min-h-screen print:min-h-[100vh]">
+                    <!-- COA 내용 (기존과 동일) -->
                     <header class="flex justify-between items-start mb-8">
                         <div>
                             <img src="logo.png" alt="Company Logo" class="h-16" onerror="this.style.display='none'">
@@ -565,109 +566,33 @@ Exp. Date :3 years after Mfg. Date
         }
 
         // ==========================================
-        // ★ Mock 데이터 함수들
+        // ★ API 호출 함수 (Mock 데이터 폴백 제거)
         // ==========================================
-        
-        // 완전한 테스트 데이터를 반환하는 함수 추가
-        function getCompleteMockTests(productType) {
-            if (productType.includes('Acetonitrile') || productType.includes('75-05-8') || productType.includes('1698')) {
-                return [
-                    { test: 'Appearance', unit: '-', specification: 'Clear, colorless liquid', result: 'Clear, colorless liquid' },
-                    { test: 'Absorbance', unit: 'Pass/Fail', specification: 'Pass test', result: 'Pass test' },
-                    { test: 'Assay', unit: '%', specification: '≥ 99.95', result: '99.99' },
-                    { test: 'Color', unit: 'APHA', specification: '≤ 5', result: '2' },
-                    { test: 'Density at 25 Degrees C', unit: 'GM/ML', specification: 'Inclusive Between 0.775~0.780', result: '0.777' },
-                    { test: 'Evaporation residue', unit: 'ppm', specification: '≤ 1', result: '≤ 1' },
-                    { test: 'Fluorescence Background', unit: 'Pass/Fail', specification: 'To pass test', result: 'Pass test' },
-                    { test: 'Identification', unit: 'Pass/Fail', specification: 'To pass test', result: 'Pass test' },
-                    { test: 'LC Gradient Suitability', unit: 'Pass/Fail', specification: 'To pass test', result: 'Pass test' },
-                    { test: 'Optical Absorbance 190 nm', unit: 'Abs.unit', specification: '≤ 1.00', result: '0.49' },
-                    { test: 'Optical Absorbance 195 nm', unit: 'Abs.unit', specification: '≤ 0.15', result: '0.06' },
-                    { test: 'Optical Absorbance 200 nm', unit: 'Abs.unit', specification: '≤ 0.07', result: '0.02' },
-                    { test: 'Optical Absorbance 205 nm', unit: 'Abs.unit', specification: '≤ 0.05', result: '0.02' },
-                    { test: 'Optical Absorbance 210 nm', unit: 'Abs.unit', specification: '≤ 0.04', result: '0.015' },
-                    { test: 'Optical Absorbance 220 nm', unit: 'Abs.unit', specification: '≤ 0.02', result: '0.008' },
-                    { test: 'Optical Absorbance 254 nm', unit: 'Abs.unit', specification: '≤ 0.01', result: '0.001' },
-                    { test: 'Refractive index @ 25 Deg C', unit: '-', specification: 'Inclusive Between 1.3405~1.3425', result: '1.342' },
-                    { test: 'Titratable Acid', unit: 'mEq/g', specification: '≤ 0.008', result: '0.006' },
-                    { test: 'Titratable Base', unit: 'mEq/g', specification: '≤ 0.0006', result: '0.00001' },
-                    { test: 'Water (H2O)', unit: '%', specification: '≤ 0.01', result: '0.002' }
-                ];
-            } else {
-                return [
-                    { test: 'Color (APHA)', unit: '-', specification: 'Max. 10', result: '3' },
-                    { test: 'Optical Absorbance 254 nm', unit: '-', specification: 'Max. 0.014', result: '0.003' },
-                    { test: 'Optical Absorbance 215 nm', unit: '-', specification: 'Max. 0.20', result: '0.54' },
-                    { test: 'Optical Absorbance 200 nm', unit: '-', specification: 'Max. 0.75', result: '0.54' },
-                    { test: 'Fluorescence Background (as Quinine Suitable)', unit: '-', specification: 'To pass test', result: 'P.T.' },
-                    { test: 'Residue after evaporation', unit: 'ppm', specification: 'Max. 5', result: '<1' },
-                    { test: 'Water', unit: '%', specification: 'Max. 0.02', result: '0.003' },
-                    { test: 'Assay', unit: '%', specification: 'Min. 96.0', result: '99.4' }
-                ];
-            }
-        }
-
-        function getMockData(lotNumber) {
-            const mockData = {
-                'P77202': {
-                    success: true,
-                    product: {
-                        name: 'Acetonitrile (ACN), HPLC Grade',
-                        code: '1698',
-                        casNumber: '75-05-8',
-                        mfgDate: '2025-07-07',
-                        expDate: '3 years after Mfg. Date'
-                    },
-                    tests: getCompleteMockTests('Acetonitrile'),
-                    source: 'mock-data'
-                },
-                'P93210': {
-                    success: true,
-                    product: {
-                        name: 'n-Heptane, HPLC Grade',
-                        code: '2701',
-                        casNumber: '142-82-5',
-                        mfgDate: '2025-09-03',
-                        expDate: '3 years after Mfg. Date'
-                    },
-                    tests: getCompleteMockTests('n-Heptane'),
-                    source: 'mock-data'
-                },
-                'P81202': {
-                    success: true,
-                    product: {
-                        name: 'Acetonitrile (ACN), HPLC Grade',
-                        code: '1698',
-                        casNumber: '75-05-8',
-                        mfgDate: '2025-08-19',
-                        expDate: '3 years after Mfg. Date'
-                    },
-                    tests: getCompleteMockTests('Acetonitrile'),
-                    source: 'mock-data'
-                }
-            };
-            
-            return mockData[lotNumber] || mockData['P77202'];
-        }
-
-        // API 호출 헬퍼 함수 (Mock 데이터 폴백 포함)
-        
         async function callApi(endpoint, params = {}) {
             const config = getApiConfig();
             const queryString = new URLSearchParams(params).toString();
-            const url = `${config.baseUrl}/${endpoint}?lot_no=${params.lot_no}`;
-                        
+            const url = `${config.baseUrl}/${endpoint}${queryString ? `?${queryString}` : ''}`;
+            
+            console.log(`API Call to: ${url}`);
+            console.log(`Platform: ${config.platform}`);
+            
             try {
-                const response = await fetch(url, { timeout: 20000 });                            
-                if(!response.ok) throw new Error(`HTTP ${response.status}`);
+                const response = await fetch(url, {
+                    signal: AbortSignal.timeout(20000) // 20초 타임아웃
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 
                 const data = await response.json();
-            
+                
                 if (!data.success) {
                     throw new Error(data.error || 'Failed to fetch data');
                 }
                 
                 return data;
+                
             } catch (error) {
                 console.error('API Call Failed:', error);
                 throw error; // Mock 데이터로 폴백하지 않고 에러 전파
@@ -719,6 +644,7 @@ Exp. Date :3 years after Mfg. Date
             const statusDiv = document.getElementById('searchStatus');
             const className = type === 'success' ? 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative'
                 : type === 'error' ? 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative'
+                : type === 'warning' ? 'bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative'
                 : 'bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative';
             statusDiv.innerHTML = `<div class="${className}" role="alert">${message}</div>`;
         }
@@ -819,10 +745,10 @@ Exp. Date :3 years after Mfg. Date
             }
             
             showLoading(true);
-            showStatus('데이터를 조회 중입니다...', 'loading');
+            showStatus('DUKSAN 웹사이트에서 데이터를 조회 중입니다...', 'loading');
             
             try {
-                // callApi 함수를 사용하여 플랫폼별 API 호출 (Mock 데이터 폴백 포함)
+                // 실제 API 호출 (Mock 데이터 폴백 없음)
                 const data = await callApi('scrape', { lot_no: lot });
                 
                 if (!data.success) {
@@ -841,117 +767,14 @@ Exp. Date :3 years after Mfg. Date
                 let expDate = data.product.expDate || '';
                 let retestYears = 3;
 
-                // rawData 보강 추출
-                if (data.rawData) {
-                    if (!productName || productName === 'Unknown Product') {
-                        const m = data.rawData.match(/Certificate of Analysis\s*([^\n\r]+)/i);
-                        if (m) productName = m[1].trim();
-                    }
-                    if (!casNumber) {
-                        const m = data.rawData.match(/\[([^\]]+)\]/);
-                        if (m) casNumber = m[1];
-                    }
-                    if (!productCode) {
-                        const m = data.rawData.match(/Product code\.?\s*([A-Za-z0-9-]+)/i);
-                        if (m) productCode = m[1];
-                    }
-                    if (!mfgDate) {
-                        const m = data.rawData.match(/Mfg\. Date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
-                        if (m) mfgDate = m[1];
-                    }
-                    if (!expDate) {
-                        const m = data.rawData.match(/Exp\. Date\s*:\s*([^\n\r]+)/i);
-                        if (m) expDate = m[1].trim();
-                    }
-                }
-
-                // ==========================================
-                // ★ 코드를 최우선으로 매핑
-                // ==========================================
+                // 코드 기반 매핑
                 let matchedByCode = null;
                 if (productCode) {
                     matchedByCode = findByCode(productCode);
                     if (matchedByCode) {
-                        // 코드가 있으면 **무조건** 여기 값으로 세팅
                         productName = matchedByCode.description;
                         casNumber = casNumber || matchedByCode.cas;
                         retestYears = matchedByCode.retest;
-                    }
-                }
-
-                // ==========================================
-                // ★ 테스트 기반 추정은 '코드 매칭 실패시에만' 수행
-                // ==========================================
-                if ((!productName || productName === 'Unknown Product') && !matchedByCode) {
-                    const testNames = data.tests.map(t => (t.test || '').toLowerCase()).join(' ');
-                    const testCount = data.tests.length;
-                    
-                    if ((testNames.includes('optical absorbance') && testNames.includes('refractive index') && testCount >= 15) || 
-                        (testNames.includes('acetonitrile') && testCount > 10)) {
-                        productName = 'Acetonitrile (ACN), HPLC Grade';
-                        productCode = '1698';
-                        casNumber = '75-05-8';
-                        retestYears = 3;
-                    } else if ((testNames.includes('water (h2o)')) || (testNames.includes(' water ') && testCount < 8)) {
-                        // 물 오인 방지: 무조건 'code 없음' + 테스트 수 적을 때만
-                        productName = 'Water (HPLC), Fisher Chemical';
-                        productCode = '1952';
-                        casNumber = '7732-18-5';
-                        retestYears = 2;
-                    } else if (testNames.includes('methanol') || testNames.includes('methyl alcohol')) {
-                        productName = 'Methanol (Methyl alcohol), HPLC Grade';
-                        productCode = '1704';
-                        casNumber = '67-56-1';
-                        retestYears = 3;
-                    } else if (testNames.includes('acetone')) {
-                        productName = 'Acetone (Certified ACS), Fisher Chemical';
-                        productCode = '2672';
-                        casNumber = '67-64-1';
-                        retestYears = 5;
-                    } else if (testNames.includes('ethanol')) {
-                        productName = 'Ethanol, absolute, ACS Grade';
-                        productCode = '2716';
-                        casNumber = '64-17-5';
-                        retestYears = 5;
-                    } else if (testNames.includes('isopropanol') || testNames.includes('2-propanol')) {
-                        productName = '2-Propanol, ACS Grade';
-                        productCode = '7954';
-                        casNumber = '67-63-0';
-                        retestYears = 5;
-                    } else if (testNames.includes('chloroform')) {
-                        productName = 'Chloroform (Approx. 0.75% Ethanol as Preservative/HPLC), Fisher Chemical';
-                        productCode = '2664';
-                        casNumber = '67-66-3';
-                        retestYears = 3;
-                    } else if (testNames.includes('hexanes') || testNames.includes('n-hexane')) {
-                        productName = 'Hexanes, HPLC Grade';
-                        productCode = '826';
-                        casNumber = '110-54-3';
-                        retestYears = 3;
-                    } else if (testNames.includes('toluene')) {
-                        productName = 'Toluene (HPLC), Fisher Chemical';
-                        productCode = '2582';
-                        casNumber = '108-88-3';
-                        retestYears = 3;
-                    } else if (testNames.includes('tetrahydrofuran') || testNames.includes('thf')) {
-                        productName = 'Tetrahydrofuran (HPLC), unstabilized, Fisher Chemical';
-                        productCode = '1695';
-                        casNumber = '109-99-9';
-                        retestYears = 1;
-                    }
-                }
-
-                // 이름 기반 보강(매핑) - matchedByCode 있으면 스킵
-                if (productName && productName !== 'Unknown Product' && !matchedByCode) {
-                    const normalizedName = productName.toLowerCase();
-                    for (const [key, value] of Object.entries(productMapping)) {
-                        if (normalizedName.includes(key)) {
-                            productName = value.description;
-                            productCode = productCode || value.code;
-                            casNumber = casNumber || value.cas;
-                            retestYears = value.retest;
-                            break;
-                        }
                     }
                 }
 
@@ -1000,9 +823,8 @@ Exp. Date :3 years after Mfg. Date
                 populateCoa(true);
                 
                 const config = getApiConfig();
-                const sourceText = data.source === 'mock-data' ? 'Mock 데이터' : config.name;
                 showStatus(
-                    `데이터를 성공적으로 가져왔습니다 (${sourceText}). ${data.tests.length}개의 테스트 항목을 찾았습니다.`, 
+                    `데이터를 성공적으로 가져왔습니다 (실제 데이터). ${data.tests.length}개의 테스트 항목을 찾았습니다.`, 
                     'success'
                 );
 
@@ -1010,16 +832,14 @@ Exp. Date :3 years after Mfg. Date
                 console.error('Fetch Error:', error);
                 
                 const config = getApiConfig();
-                let errorMessage = `데이터를 가져오는 중 오류가 발생했습니다 (${config.name}).`;
+                let errorMessage = `데이터를 가져오는 중 오류가 발생했습니다: ${error.message}`;
                 
                 if (error.message.includes('timeout')) {
                     errorMessage = '웹사이트 응답이 너무 느립니다. 잠시 후 다시 시도해주세요.';
-                } else if (error.message.includes('404')) {
+                } else if (error.message.includes('404') || error.message.includes('not found')) {
                     errorMessage = '해당 Lot 번호에 대한 데이터를 찾을 수 없습니다.';
-                } else if (error.message.includes('Failed to fetch')) {
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
                     errorMessage = '서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요.';
-                } else {
-                    errorMessage = error.message;
                 }
                 
                 showStatus(errorMessage, 'error');
