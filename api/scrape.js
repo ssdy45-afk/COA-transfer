@@ -1,27 +1,32 @@
-const axios = require('axios');
-const https = require('https');
-const cheerio = require('cheerio');
+import axios from 'axios';
+import https from 'https';
+import cheerio from 'cheerio';
 
-module.exports = async (req, res) => {
+export default async function handler(request, response) {
   // CORS 설정
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  response.setHeader('Access-Control-Allow-Origin', '*');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  if (request.method === 'OPTIONS') {
+    return response.status(200).end();
   }
 
-  const { lot_no } = req.query;
+  const { lot_no } = request.query;
   console.log("Received request for lot_no:", lot_no);
 
   if (!lot_no) {
-    return res.status(400).json({ error: 'lot_no query parameter is required' });
+    return response.status(400).json({ 
+      success: false,
+      error: 'lot_no query parameter is required' 
+    });
   }
 
   if (!/^[A-Z0-9]+$/.test(lot_no)) {
-    return res.status(400).json({ error: 'Invalid lot number format' });
+    return response.status(400).json({ 
+      success: false,
+      error: 'Invalid lot number format' 
+    });
   }
 
   try {
@@ -54,36 +59,36 @@ module.exports = async (req, res) => {
       }
     };
 
-    let response;
+    let axiosResponse;
     try {
-      response = await axios.get(targetUrl, config);
+      axiosResponse = await axios.get(targetUrl, config);
     } catch (directError) {
       console.log('Direct request failed:', directError.message);
       // 프록시 URL 시도
       const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
       try {
-        response = await axios.get(proxyUrl, config);
+        axiosResponse = await axios.get(proxyUrl, config);
       } catch (proxyError) {
         throw new Error(`All request methods failed: ${directError.message}`);
       }
     }
 
-    console.log("Response received, status:", response.status);
+    console.log("Response received, status:", axiosResponse.status);
 
-    if (response.status === 404) {
-      return res.status(404).json({ 
+    if (axiosResponse.status === 404) {
+      return response.status(404).json({ 
         success: false,
         error: 'Analysis certificate not found',
         message: `No certificate found for lot number: ${lot_no}`
       });
     }
 
-    if (response.status !== 200) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    if (axiosResponse.status !== 200) {
+      throw new Error(`HTTP ${axiosResponse.status}: ${axiosResponse.statusText}`);
     }
 
-    const $ = cheerio.load(response.data);
-    const results = [];
+    const $ = cheerio.load(axiosResponse.data);
+    let results = [];
 
     // 테이블 데이터 추출
     $('table tr').each((index, element) => {
@@ -105,81 +110,32 @@ module.exports = async (req, res) => {
       }
     });
 
-    // 제품명 추출 - 개선된 로직
-    let productName = '';
-    
-    // 방법 1: Certificate of Analysis 다음 텍스트
-    const coaText = $('body').text();
-    const coaMatch = coaText.match(/Certificate of Analysis\s*([^\n\r]+)/i);
-    if (coaMatch) {
-      productName = coaMatch[1].trim();
-    }
-    
-    // 방법 2: h1, h2 태그에서 추출
-    if (!productName) {
-      $('h1, h2, h3, b, strong').each((i, el) => {
-        const text = $(el).text().trim();
-        if (text && !text.includes('Certificate') && !text.includes('Analysis') && 
-            !text.includes('REAGENTS') && !text.includes('DUKSAN') && text.length > 2) {
-          // 숫자만 있는 경우 제외
-          if (!/^\d+$/.test(text)) {
-            productName = text;
-            return false; // break
-          }
-        }
-      });
+    // 테이블 데이터가 없을 경우 대체 파싱 시도
+    if (results.length === 0) {
+      console.log('No results from table parsing, trying alternative methods');
+      results = parseAlternativeTests($);
     }
 
-    // 방법 3: 테이블 앞의 텍스트에서 추출
-    if (!productName) {
-      const firstTable = $('table').first();
-      const prevElements = firstTable.prevAll();
-      prevElements.each((i, el) => {
-        const text = $(el).text().trim();
-        if (text && text.length > 2 && !text.includes('Certificate') && 
-            !text.includes('REAGENTS') && !/^\d+$/.test(text)) {
-          productName = text;
-          return false;
-        }
-      });
-    }
+    // 데이터 정제
+    results = cleanExtractedData(results);
 
-    // 제품 코드 추출 - 개선된 로직
-    let productCode = '';
-    const codeMatch = coaText.match(/Product code\.?\s*(\d+)/i);
-    if (codeMatch) {
-      productCode = codeMatch[1];
-    } else {
-      // 대체 패턴 시도
-      const altCodeMatch = coaText.match(/(?:code|Code)\s*[.:]?\s*(\d+)/i);
-      if (altCodeMatch) {
-        productCode = altCodeMatch[1];
-      }
-    }
+    // 제품명 추출
+    let productName = extractProductName($, axiosResponse.data);
+    
+    // 제품 코드 추출
+    let productCode = extractProductCode(axiosResponse.data);
 
     // CAS 번호 추출
-    let casNumber = '';
-    const casMatch = coaText.match(/\[([^\]]+)\]/);
-    if (casMatch) {
-      casNumber = casMatch[1];
-    }
+    let casNumber = extractCasNumber(axiosResponse.data);
 
     // 제조일자 추출
-    let mfgDate = '';
-    const mfgMatch = coaText.match(/Mfg\. Date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
-    if (mfgMatch) {
-      mfgDate = mfgMatch[1];
-    }
+    let mfgDate = extractMfgDate(axiosResponse.data);
 
     // 유통기한 추출
-    let expDate = '';
-    const expMatch = coaText.match(/Exp\. Date\s*:\s*([^\n\r]+)/i);
-    if (expMatch) {
-      expDate = expMatch[1].trim();
-    }
+    let expDate = extractExpDate(axiosResponse.data);
 
     // 원본 HTML의 일부를 rawData로 저장 (디버깅용)
-    const rawData = $('body').text().substring(0, 2000); // 처음 2000자만 저장
+    const rawData = $('body').text().substring(0, 2000);
 
     const responseData = {
       success: true,
@@ -189,17 +145,18 @@ module.exports = async (req, res) => {
         casNumber: casNumber,
         lotNumber: lot_no,
         mfgDate: mfgDate,
-        expDate: expDate
+        expDate: expDate || '3 years after Mfg. Date'
       },
       tests: results,
-      rawData: rawData, // 디버깅을 위한 원본 데이터 일부
-      count: results.length
+      rawData: rawData,
+      count: results.length,
+      source: 'duksan-direct'
     };
 
     console.log(`Successfully parsed: ${productName} (Code: ${productCode}, CAS: ${casNumber}), ${results.length} tests`);
     
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
-    res.status(200).json(responseData);
+    response.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=7200');
+    response.status(200).json(responseData);
 
   } catch (error) {
     console.error('Error details:', {
@@ -208,26 +165,151 @@ module.exports = async (req, res) => {
       code: error.code
     });
 
+    let statusCode = 500;
+    let errorMessage = error.message;
+
     if (error.code === 'ECONNABORTED') {
-      return res.status(408).json({ 
-        success: false,
-        error: 'Request timeout',
-        message: 'The website took too long to respond. Please try again.'
-      });
+      statusCode = 408;
+      errorMessage = 'The website took too long to respond. Please try again.';
+    } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+      statusCode = 503;
+      errorMessage = 'Cannot connect to the website. It might be down or blocking requests.';
     }
 
-    if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-      return res.status(503).json({ 
-        success: false,
-        error: 'Service unavailable',
-        message: 'Cannot connect to the website. It might be down or blocking requests.'
-      });
-    }
-
-    res.status(500).json({ 
+    response.status(statusCode).json({ 
       success: false,
       error: 'Failed to fetch analysis certificate',
-      message: error.message
+      message: errorMessage
     });
   }
-};
+}
+
+// 헬퍼 함수들 (Vercel 버전)
+function extractProductName($, html) {
+  let productName = '';
+  
+  const coaMatch = html.match(/Certificate of Analysis\s*([^\n\r]+)/i);
+  if (coaMatch) {
+    productName = coaMatch[1].trim();
+  }
+  
+  if (!productName) {
+    $('h1, h2, h3, b, strong').each((i, el) => {
+      const text = $(el).text().trim();
+      if (text && !text.includes('Certificate') && !text.includes('Analysis') && 
+          !text.includes('REAGENTS') && !text.includes('DUKSAN') && text.length > 2) {
+        if (!/^\d+$/.test(text)) {
+          productName = text;
+          return false;
+        }
+      }
+    });
+  }
+
+  if (!productName) {
+    const firstTable = $('table').first();
+    const prevElements = firstTable.prevAll();
+    prevElements.each((i, el) => {
+      const text = $(el).text().trim();
+      if (text && text.length > 2 && !text.includes('Certificate') && 
+          !text.includes('REAGENTS') && !/^\d+$/.test(text)) {
+        productName = text;
+        return false;
+      }
+    });
+  }
+
+  return productName;
+}
+
+function extractProductCode(html) {
+  let productCode = '';
+  const codeMatch = html.match(/Product code\.?\s*(\d+)/i);
+  if (codeMatch) {
+    productCode = codeMatch[1];
+  } else {
+    const altCodeMatch = html.match(/(?:code|Code)\s*[.:]?\s*(\d+)/i);
+    if (altCodeMatch) {
+      productCode = altCodeMatch[1];
+    }
+  }
+  return productCode;
+}
+
+function extractCasNumber(html) {
+  let casNumber = '';
+  const casMatch = html.match(/\[([^\]]+)\]/);
+  if (casMatch) {
+    casNumber = casMatch[1];
+  }
+  return casNumber;
+}
+
+function extractMfgDate(html) {
+  let mfgDate = '';
+  const mfgMatch = html.match(/Mfg\. Date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+  if (mfgMatch) {
+    mfgDate = mfgMatch[1];
+  }
+  return mfgDate;
+}
+
+function extractExpDate(html) {
+  let expDate = '';
+  const expMatch = html.match(/Exp\. Date\s*:\s*([^\n\r]+)/i);
+  if (expMatch) {
+    expDate = expMatch[1].trim();
+  }
+  return expDate;
+}
+
+function parseAlternativeTests($) {
+  const results = [];
+  
+  $('tr').each((index, element) => {
+    const $row = $(element);
+    const cells = [];
+    
+    $row.find('td, th').each((i, cell) => {
+      cells.push($(cell).text().trim());
+    });
+    
+    if (cells.length >= 4) {
+      const testItem = {
+        test: cells[0],
+        unit: cells[1],
+        specification: cells[2],
+        result: cells[3]
+      };
+      
+      if (isValidTestRow(testItem)) {
+        results.push(testItem);
+      }
+    }
+  });
+  
+  return results;
+}
+
+function isValidTestRow(item) {
+  return item.test && 
+         item.test.length > 1 && 
+         !item.test.match(/^(TESTS|UNIT|SPECIFICATION|RESULTS|항목|시험항목)$/i) &&
+         !item.test.includes('TESTS') &&
+         !item.test.includes('UNIT') &&
+         !item.test.includes('SPECIFICATION') &&
+         !item.test.includes('RESULTS');
+}
+
+function cleanExtractedData(results) {
+  return results.map(item => ({
+    test: item.test.replace(/[\n\r\t]+/g, ' ').trim(),
+    unit: item.unit.replace(/[\n\r\t]+/g, ' ').trim(),
+    specification: item.specification.replace(/[\n\r\t]+/g, ' ').trim(),
+    result: item.result.replace(/[\n\r\t]+/g, ' ').trim(),
+  })).filter(item => 
+    item.test && 
+    item.test.length > 1 && 
+    !item.test.match(/^(TESTS|UNIT|SPECIFICATION|RESULTS)$/i)
+  );
+}
