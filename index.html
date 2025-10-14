@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificate of Analysis Generator (Serverless)</title>
+    <title>Certificate of Analysis Generator (Multi-Platform)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @media print {
@@ -34,9 +34,27 @@
             100% { transform: rotate(360deg); } 
         }
         .loading-spinner { animation: spin 1s linear infinite; }
+        
+        /* 플랫폼 표시 스타일 */
+        .platform-badge {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+        .platform-netlify { background: #00C7B7; color: white; }
+        .platform-vercel { background: #000000; color: white; }
+        .platform-local { background: #666666; color: white; }
     </style>
 </head>
 <body class="bg-gray-100 p-4 sm:p-8">
+    <!-- 플랫폼 배지 표시 -->
+    <div id="platformBadge" class="platform-badge no-print"></div>
+
     <div class="container mx-auto">
         <h1 class="text-3xl font-bold mb-4 text-center text-gray-700 no-print">성적서(COA) 생성기</h1>
         
@@ -486,7 +504,102 @@ Exp. Date :3 years after Mfg. Date
     <script>
         const HISTORY_KEY = 'coaGeneratorHistory';
 
-        // Product mapping database (수정: 2-butanone을 MEK로 수정)
+        // ==========================================
+        // ★ 플랫폼 환경 감지 및 API 설정
+        // ==========================================
+        function getApiConfig() {
+            const hostname = window.location.hostname;
+            const href = window.location.href;
+            
+            console.log('Current hostname:', hostname);
+            console.log('Current href:', href);
+
+            // Netlify 환경 감지
+            if (hostname.includes('netlify.app') || 
+                hostname.includes('netlify.com') ||
+                href.includes('netlify')) {
+                return {
+                    baseUrl: '/.netlify/functions',
+                    platform: 'netlify',
+                    name: 'Netlify'
+                };
+            }
+            // Vercel 환경 감지
+            else if (hostname.includes('vercel.app') || 
+                     hostname.includes('.now.sh') ||
+                     href.includes('vercel')) {
+                return {
+                    baseUrl: '/api',
+                    platform: 'vercel',
+                    name: 'Vercel'
+                };
+            }
+            // 로컬 개발 환경
+            else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                // 로컬에서는 두 가지 옵션 테스트 가능
+                const useNetlifyStyle = localStorage.getItem('useNetlifyStyle') === 'true';
+                if (useNetlifyStyle) {
+                    return {
+                        baseUrl: '/.netlify/functions',
+                        platform: 'netlify',
+                        name: 'Netlify (Local)'
+                    };
+                } else {
+                    return {
+                        baseUrl: '/api',
+                        platform: 'vercel', 
+                        name: 'Vercel (Local)'
+                    };
+                }
+            }
+            // 기타 환경 (기본값: Netlify)
+            else {
+                return {
+                    baseUrl: '/.netlify/functions',
+                    platform: 'netlify',
+                    name: 'Netlify (Default)'
+                };
+            }
+        }
+
+        // 플랫폼 배지 업데이트
+        function updatePlatformBadge() {
+            const config = getApiConfig();
+            const badge = document.getElementById('platformBadge');
+            
+            badge.textContent = config.name;
+            badge.className = `platform-badge no-print platform-${config.platform}`;
+            
+            console.log(`Running on: ${config.name} (${config.platform})`);
+            console.log(`API Base URL: ${config.baseUrl}`);
+        }
+
+        // API 호출 헬퍼 함수
+        async function callApi(endpoint, params = {}) {
+            const config = getApiConfig();
+            const queryString = new URLSearchParams(params).toString();
+            const url = `${config.baseUrl}/${endpoint}${queryString ? `?${queryString}` : ''}`;
+            
+            console.log(`API Call to: ${url}`);
+            console.log(`Platform: ${config.platform}`);
+            
+            try {
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API Call Failed:', error);
+                throw error;
+            }
+        }
+
+        // ==========================================
+        // ★ 제품 매핑 데이터베이스 (코드 우선 매핑 적용)
+        // ==========================================
         const productMapping = {
             'acetonitrile': { code: '1698', productNo: 'A998', description: 'Acetonitrile (ACN), HPLC Grade', retest: 3, cas: '75-05-8' },
             'acetone': { code: '2672', productNo: 'A18', description: 'Acetone (Certified ACS), Fisher Chemical', retest: 5, cas: '67-64-1' },
@@ -523,7 +636,9 @@ Exp. Date :3 years after Mfg. Date
             return Object.values(productMapping).find(p => String(p.code).toLowerCase() === String(code).toLowerCase());
         }
 
-        // Utility functions
+        // ==========================================
+        // ★ 유틸리티 함수들
+        // ==========================================
         function escapeHtml(s) {
             return (s ?? '').toString().replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
         }
@@ -576,7 +691,9 @@ Exp. Date :3 years after Mfg. Date
             return `${y}-${m}-${da}`;
         }
 
-        // History functions
+        // ==========================================
+        // ★ History 관리 함수들
+        // ==========================================
         function getHistory() {
             const j = localStorage.getItem(HISTORY_KEY);
             return j ? JSON.parse(j) : [];
@@ -621,7 +738,11 @@ Exp. Date :3 years after Mfg. Date
             populateCoa(false);
         }
 
-        // Main functions
+        // ==========================================
+        // ★ 주요 기능 함수들
+        // ==========================================
+
+        // ★ 수정된 searchAndPopulateDuksanData 함수 (코드 우선 매핑 적용)
         async function searchAndPopulateDuksanData() {
             const lot = document.getElementById('duksanLotNumberInput').value.trim();
             if (!lot) {
@@ -633,11 +754,16 @@ Exp. Date :3 years after Mfg. Date
             showStatus('데이터를 조회 중입니다...', 'loading');
             
             try {
-                const resp = await fetch(`/.netlify/functions/scrape?lot_no=${encodeURIComponent(lot)}`);
+                // callApi 함수를 사용하여 플랫폼별 API 호출
+                const data = await callApi('scrape', { lot_no: lot });
                 
-                const data = await resp.json();
-                if (!data.success) throw new Error(data.error || '데이터가 없습니다.');
-                if (!data.tests || !data.tests.length) throw new Error('테스트 결과 데이터가 없습니다.');
+                if (!data.success) {
+                    throw new Error(data.error || '데이터를 가져오는데 실패했습니다.');
+                }
+
+                if (!data.tests || !data.tests.length) {
+                    throw new Error('테스트 결과 데이터가 없습니다.');
+                }
 
                 // 제품 정보 추출
                 let productName = data.product.name || '';
@@ -747,7 +873,7 @@ Exp. Date :3 years after Mfg. Date
                     }
                 }
 
-                // 3) 이름 기반 보강(매핑) - matchedByCode 있으면 스킵
+                // 이름 기반 보강(매핑) - matchedByCode 있으면 스킵
                 if (productName && productName !== 'Unknown Product' && !matchedByCode) {
                     const normalizedName = productName.toLowerCase();
                     for (const [key, value] of Object.entries(productMapping)) {
@@ -761,7 +887,7 @@ Exp. Date :3 years after Mfg. Date
                     }
                 }
 
-                // 4) 날짜/만료 처리
+                // 날짜/만료 처리
                 if (!mfgDate) mfgDate = new Date().toISOString().split('T')[0];
                 if (expDate && /years/.test(expDate)) {
                     const m = expDate.match(/(\d+)\s*years/);
@@ -804,11 +930,18 @@ Exp. Date :3 years after Mfg. Date
                 document.getElementById('manualLotNumber').value = lot;
 
                 populateCoa(true);
-                showStatus(`데이터를 성공적으로 가져왔습니다. ${data.tests.length}개의 테스트 항목을 찾았습니다.`, 'success');
                 
+                const config = getApiConfig();
+                showStatus(
+                    `데이터를 성공적으로 가져왔습니다 (${config.name}). ${data.tests.length}개의 테스트 항목을 찾았습니다.`, 
+                    'success'
+                );
+
             } catch (error) {
                 console.error('Fetch Error:', error);
-                let errorMessage = '데이터를 가져오는 중 오류가 발생했습니다.';
+                
+                const config = getApiConfig();
+                let errorMessage = `데이터를 가져오는 중 오류가 발생했습니다 (${config.name}).`;
                 
                 if (error.message.includes('timeout')) {
                     errorMessage = '웹사이트 응답이 너무 느립니다. 잠시 후 다시 시도해주세요.';
@@ -972,7 +1105,57 @@ Exp. Date :3 years after Mfg. Date
             }
         }
 
-        // Event listeners
+        // ==========================================
+        // ★ 로컬 개발을 위한 플랫폼 전환 기능
+        // ==========================================
+        function setupPlatformSwitcher() {
+            // 로컬 환경에서만 플랫폼 전환 버튼 표시
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                const switcher = document.createElement('div');
+                switcher.className = 'fixed bottom-4 right-4 bg-white p-3 rounded-lg shadow-lg no-print border';
+                switcher.innerHTML = `
+                    <div class="text-sm font-semibold mb-2">로컬 API 모드</div>
+                    <button id="switchPlatform" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition">
+                        현재: ${localStorage.getItem('useNetlifyStyle') === 'true' ? 'Netlify' : 'Vercel'} 모드
+                    </button>
+                    <div class="text-xs text-gray-500 mt-1">클릭하여 전환</div>
+                `;
+                document.body.appendChild(switcher);
+
+                document.getElementById('switchPlatform').addEventListener('click', function() {
+                    const current = localStorage.getItem('useNetlifyStyle') === 'true';
+                    localStorage.setItem('useNetlifyStyle', (!current).toString());
+                    window.location.reload();
+                });
+            }
+        }
+
+        // ==========================================
+        // ★ 초기화 함수
+        // ==========================================
+        function initializeApp() {
+            // 플랫폼 배지 표시
+            updatePlatformBadge();
+            
+            // 로컬 개발용 플랫폼 전환기 설정
+            setupPlatformSwitcher();
+            
+            // 기존 초기화 로직
+            populateCoa(false);
+            loadHistoryDisplay();
+            
+            // 현재 플랫폼 정보 로그 출력
+            const config = getApiConfig();
+            console.log('=== COA Generator Initialized ===');
+            console.log('Platform:', config.name);
+            console.log('API Base:', config.baseUrl);
+            console.log('User Agent:', navigator.userAgent);
+            console.log('================================');
+        }
+
+        // ==========================================
+        // ★ 이벤트 리스너 설정
+        // ==========================================
         document.getElementById('duksanSearchButton').addEventListener('click', searchAndPopulateDuksanData);
         document.getElementById('duksanLotNumberInput').addEventListener('keyup', e => {
             if (e.key === 'Enter') searchAndPopulateDuksanData();
@@ -985,11 +1168,8 @@ Exp. Date :3 years after Mfg. Date
             }
         });
 
-        // Initialize
-        window.onload = () => {
-            populateCoa(false);
-            loadHistoryDisplay();
-        };
+        // 앱 초기화
+        window.onload = initializeApp;
     </script>
 </body>
 </html>
