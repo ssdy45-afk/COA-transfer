@@ -1,14 +1,13 @@
 {
-  "functions": {
-    "api/*.js": { "runtime": "nodejs22.x" }
+  "name": "coa-generator",
+  "version": "1.0.0",
+  "description": "Certificate of Analysis Generator",
+  "main": "index.html",
+  "scripts": {
+    "build": "echo 'No build step needed'"
   },
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "s-maxage=300, stale-while-revalidate" }
-      ]
-    }
-  ]
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  },
+  "devDependencies": {}
 }
-
