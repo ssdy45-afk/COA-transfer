@@ -564,10 +564,7 @@ Exp. Date :3 years after Mfg. Date
             console.log(`Running on: ${config.name} (${config.platform})`);
             console.log(`API Base URL: ${config.baseUrl}`);
         }
-
-        // ==========================================
-        // ★ API 호출 함수 (Mock 데이터 폴백 제거)
-        // ==========================================
+        
         async function callApi(endpoint, params = {}) {
             const config = getApiConfig();
             const queryString = new URLSearchParams(params).toString();
@@ -578,10 +575,12 @@ Exp. Date :3 years after Mfg. Date
             
             try {
                 const response = await fetch(url, {
-                    signal: AbortSignal.timeout(20000) // 20초 타임아웃
+                    signal: AbortSignal.timeout(30000) // 20초 타임아웃
                 });
                 
                 if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('HTTP Error:', response.status, errorText);
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
@@ -595,7 +594,14 @@ Exp. Date :3 years after Mfg. Date
                 
             } catch (error) {
                 console.error('API Call Failed:', error);
-                throw error; // Mock 데이터로 폴백하지 않고 에러 전파
+                // 네트워크 에러인 경우 더 명확한 메시지
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    throw new Error('Network error: Cannot connect to server. Please check your internet connection.');
+                }
+                if (error.name === 'AbortError') {
+                    throw new Error('Request timeout: The server took too long to respond.');
+                }
+                throw error;
             }
         }
 
