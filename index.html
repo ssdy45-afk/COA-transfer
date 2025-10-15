@@ -575,13 +575,13 @@ Exp. Date :3 years after Mfg. Date
             
             try {
                 const response = await fetch(url, {
-                    signal: AbortSignal.timeout(30000) // 20초 타임아웃
+                    signal: AbortSignal.timeout(30000) // 30초 타임아웃
                 });
                 
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error('HTTP Error:', response.status, errorText);
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
                 }
                 
                 const data = await response.json();
