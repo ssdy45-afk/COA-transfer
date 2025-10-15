@@ -4,7 +4,7 @@ import https from 'https';
 // cheerio를 동적으로 import
 let cheerio;
 
-const DEFAULT_TIMEOUT = 15000;
+const DEFAULT_TIMEOUT = 10000;
 
 export default async function handler(request, response) {
   // CORS 설정
@@ -33,33 +33,22 @@ export default async function handler(request, response) {
     
     console.log(`Processing lot number: ${lot_no}`);
     
-    // 도메인을 duksan.kr로 변경
+    // 올바른 도메인 사용: www.duksan.kr
     const targetUrl = `https://www.duksan.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
+    console.log(`Target URL: ${targetUrl}`);
     
     let html;
-    try {
-      const httpsAgent = new https.Agent({
-        rejectUnauthorized: false,
-        timeout: DEFAULT_TIMEOUT
-      });
-
-      const axiosResponse = await axios.get(targetUrl, {
-        httpsAgent,
-        timeout: DEFAULT_TIMEOUT,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml',
-          'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-        },
-      });
-      
-      html = axiosResponse.data;
-      console.log('Successfully fetched HTML directly');
-    } catch (directError) {
-      console.log('Direct fetch failed, trying proxy...');
-      
+    
+    // 여러 프록시 서비스 시도
+    const proxyServices = [
+      `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+      `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+      `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
+    ];
+    
+    for (const proxyUrl of proxyServices) {
       try {
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+        console.log(`Trying proxy: ${proxyUrl.substring(0, 50)}...`);
         const proxyResponse = await axios.get(proxyUrl, { 
           timeout: DEFAULT_TIMEOUT 
         });
@@ -67,19 +56,49 @@ export default async function handler(request, response) {
         if (proxyResponse.data?.contents) {
           html = proxyResponse.data.contents;
           console.log('Successfully fetched HTML via proxy');
-        } else {
-          throw new Error('Proxy returned no content');
+          break;
+        } else if (proxyResponse.data) {
+          // 일부 프록시는 직접 HTML을 반환함
+          html = proxyResponse.data;
+          console.log('Successfully fetched HTML via proxy (direct)');
+          break;
         }
       } catch (proxyError) {
-        console.error('Both direct and proxy failed:', proxyError.message);
-        throw new Error(`Failed to fetch data: ${directError.message}`);
+        console.log(`Proxy failed: ${proxyError.message}`);
+        continue;
+      }
+    }
+
+    if (!html) {
+      // 모든 프록시가 실패하면 직접 시도 (더 짧은 타임아웃으로)
+      try {
+        console.log('All proxies failed, trying direct connection with shorter timeout...');
+        const httpsAgent = new https.Agent({
+          rejectUnauthorized: false,
+          timeout: 5000
+        });
+
+        const directResponse = await axios.get(targetUrl, {
+          httpsAgent,
+          timeout: 5000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml',
+          },
+        });
+        
+        html = directResponse.data;
+        console.log('Successfully fetched HTML directly');
+      } catch (directError) {
+        console.error('Direct connection also failed:', directError.message);
+        throw new Error('All connection methods failed');
       }
     }
 
     if (!html) {
       return response.status(404).json({ 
         success: false, 
-        error: 'Could not fetch certificate data' 
+        error: 'Could not fetch certificate data from Duksan website' 
       });
     }
 
@@ -111,9 +130,20 @@ export default async function handler(request, response) {
 
   } catch (error) {
     console.error('FUNCTION_ERROR:', error);
+    
+    // 더 자세한 에러 메시지
+    let errorMessage = 'Failed to process request';
+    if (error.message.includes('ENOTFOUND')) {
+      errorMessage = 'Cannot connect to Duksan website. Please check your network connection.';
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Request timeout. The website might be temporarily unavailable.';
+    } else if (error.message.includes('All connection methods failed')) {
+      errorMessage = 'All connection methods failed. The website might be blocking our requests.';
+    }
+    
     return response.status(500).json({ 
       success: false, 
-      error: 'Failed to process request',
+      error: errorMessage,
       message: error.message
     });
   }
