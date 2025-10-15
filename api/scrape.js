@@ -1,6 +1,6 @@
 import axios from 'axios';
-import * as https from 'node:https';
-import * as cheerio from 'cheerio';
+import https from 'https';                 // use classic core module id to avoid bundler issues
+import * as cheerio from 'cheerio';       // ESM: namespace import
 
 export default async function handler(request, response) {
   response.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,7 +19,7 @@ export default async function handler(request, response) {
     const config = {
       httpsAgent, timeout: 30000, maxRedirects: 5, decompress: true,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br',
@@ -63,7 +63,12 @@ export default async function handler(request, response) {
       $(table).find('tr').each((__, tr) => {
         const $cells = $(tr).find('td, th');
         if ($cells.length >= 4) {
-          const row = { test: $cells.eq(0).text().trim(), unit: $cells.eq(1).text().trim(), specification: $cells.eq(2).text().trim(), result: $cells.eq(3).text().trim() };
+          const row = {
+            test: $cells.eq(0).text().trim(),
+            unit: $cells.eq(1).text().trim(),
+            specification: $cells.eq(2).text().trim(),
+            result: $cells.eq(3).text().trim(),
+          };
           if (isValidTestRow(row)) results.push(row);
         }
       });
@@ -82,7 +87,14 @@ export default async function handler(request, response) {
 
     return response.status(200).json({
       success: true,
-      product: { name: productName || 'Chemical Product', code: productCode, casNumber, lotNumber: lot_no, mfgDate: mfgDate || new Date().toISOString().split('T')[0], expDate: expDate || '3 years after Mfg. Date' },
+      product: {
+        name: productName || 'Chemical Product',
+        code: productCode,
+        casNumber,
+        lotNumber: lot_no,
+        mfgDate: mfgDate || new Date().toISOString().split('T')[0],
+        expDate: expDate || '3 years after Mfg. Date',
+      },
       tests: cleanExtractedData(results),
       count: results.length,
       source: usedProxy ? 'proxy' : 'direct',
@@ -96,7 +108,9 @@ export default async function handler(request, response) {
   }
 }
 
-function isValidTestRow(item) { return item.test && item.test.length > 1 && !/^(TESTS|UNIT|SPECIFICATION|RESULTS|항목|시험항목|Test|Item)$/i.test(item.test); }
+function isValidTestRow(item) {
+  return item.test && item.test.length > 1 && !/^(TESTS|UNIT|SPECIFICATION|RESULTS|항목|시험항목|Test|Item)$/i.test(item.test);
+}
 function cleanExtractedData(results) {
   return results.map(item => ({
     test: (item.test || '').replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim(),
@@ -115,13 +129,16 @@ function parseAlternativeTests($) {
   return results;
 }
 function extractProductName($, html) {
-  const h = $('h1,h2,h3').first().text().trim(); if (h) return h;
-  const m = html.match(/([A-Za-z][A-Za-z0-9\s\-]+)\s*\[\d{2}-\d{2}-\d{1}\]/); return m ? m[1] : '';
+  const h = $('h1,h2,h3').first().text().trim();
+  if (h) return h;
+  const m = html.match(/([A-Za-z][A-Za-z0-9\s\-]+)\s*\[\d{2}-\d{2}-\d{1}\]/);
+  return m ? m[1] : '';
 }
 function extractProductCode($, html) {
   const codeLabel = $('td,th').filter((_, el) => /Product\s*code/i.test($(el).text())).next().text().trim();
   if (codeLabel) return codeLabel;
-  const m = html.match(/Product(?:\s*code|\s*No\.?)\s*[:\-]?\s*([A-Za-z0-9\-]+)/i); return m ? m[1] : '';
+  const m = html.match(/Product(?:\s*code|\s*No\.?)\s*[:\-]?\s*([A-Za-z0-9\-]+)/i);
+  return m ? m[1] : '';
 }
 function extractCasNumber(html) { const m = html.match(/\b\d{2}-\d{2}-\d\b/); return m ? m[0] : ''; }
 function extractMfgDate(html) { const m = html.match(/Mfg\.?\s*Date\s*[:\-]?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i); return m ? m[1] : ''; }
