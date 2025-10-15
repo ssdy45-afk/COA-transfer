@@ -615,6 +615,7 @@ Exp. Date :3 years after Mfg. Date
             'isopropanol': { code: '7954', productNo: 'A416', description: '2-Propanol, ACS Grade', retest: 5, cas: '67-63-0' },
             '2-propanol': { code: '7954', productNo: 'A416', description: '2-Propanol, ACS Grade', retest: 5, cas: '67-63-0' },
             'water': { code: '1952', productNo: 'W5', description: 'Water (HPLC), Fisher Chemical', retest: 2, cas: '7732-18-5' },
+            'water lcms': { code: '7529', productNo: 'W6', description: 'Water, Optima™ LC/MS Grade, Fisher Chemical™', retest: 2, cas: '7732-18-5' },
             'chloroform': { code: '2664', productNo: 'C606', description: 'Chloroform (Approx. 0.75% Ethanol as Preservative/HPLC), Fisher Chemical', retest: 3, cas: '67-66-3' },
             'hexanes': { code: '826', productNo: 'H302', description: 'Hexanes, HPLC Grade', retest: 3, cas: '110-54-3' },
             'toluene': { code: '2582', productNo: 'T290', description: 'Toluene (HPLC), Fisher Chemical', retest: 3, cas: '108-88-3' },
@@ -629,6 +630,7 @@ Exp. Date :3 years after Mfg. Date
             'ethyl ether': { code: '2690', productNo: 'E138', description: 'Ethyl Ether Anhydrous (Certified ACS), Fisher Chemical™', retest: 5, cas: '60-29-7' },
             'ethyl acetate': { code: '1734', productNo: 'E195', description: 'Ethyl acetate, HPLC Grade', retest: 2, cas: '141-78-6' },
             'heptane': { code: '2701', productNo: 'H350', description: 'n-Heptane, HPLC Grade', retest: 3, cas: '142-82-5' },
+            'n-heptane': { code: '2701', productNo: 'H350', description: 'n-Heptane, HPLC Grade', retest: 3, cas: '142-82-5' },
             'isooctane': { code: '3469', productNo: 'O296', description: 'Isooctane (HPLC), Fisher Chemical', retest: 2, cas: '540-84-1' },
             'pentane': { code: '2767', productNo: 'P399', description: 'Pentane (HPLC), Fisher Chemical', retest: 2, cas: '109-66-0' },
             'thf': { code: '1695', productNo: 'T425', description: 'Tetrahydrofuran (HPLC), unstabilized, Fisher Chemical', retest: 1, cas: '109-99-9' },
@@ -636,9 +638,50 @@ Exp. Date :3 years after Mfg. Date
             'xylenes': { code: '1649', productNo: 'X5', description: 'Xylenes, ACS Grade', retest: 5, cas: '1330-20-7' }
         };
 
-        // 코드로 제품 찾는 함수
+        // ==========================================
+        // ★ 코드로 제품 찾는 함수 개선
+        // ==========================================
         function findByCode(code) {
-            return Object.values(productMapping).find(p => String(p.code).toLowerCase() === String(code).toLowerCase());
+            if (!code) return null;
+            
+            // 코드를 문자열로 변환하고 앞뒤 공백 제거
+            const searchCode = String(code).trim();
+            console.log(`Searching for product code: "${searchCode}"`);
+            
+            // 1. productMapping에서 검색
+            let found = Object.values(productMapping).find(p => 
+                String(p.code).toLowerCase() === searchCode.toLowerCase()
+            );
+            
+            if (found) {
+                console.log(`Found in productMapping:`, found);
+                return found;
+            }
+            
+            // 2. Excel 데이터베이스에서 검색
+            try {
+                const db = JSON.parse(document.getElementById('excelDataInput').value.trim());
+                const dbFound = db.find(p => 
+                    String(p['Product code']).toLowerCase() === searchCode.toLowerCase()
+                );
+                
+                if (dbFound) {
+                    console.log(`Found in Excel DB:`, dbFound);
+                    // productMapping 형식으로 변환
+                    return {
+                        code: dbFound['Product code'],
+                        productNo: dbFound['Product No.'],
+                        description: dbFound['Description'],
+                        retest: dbFound['Retest date'],
+                        cas: '' // CAS는 별도로 처리
+                    };
+                }
+            } catch (e) {
+                console.error('Error parsing Excel DB:', e);
+            }
+            
+            console.log(`Product code ${searchCode} not found in any database`);
+            return null;
         }
 
         // Utility functions
@@ -854,6 +897,9 @@ Exp. Date :3 years after Mfg. Date
             }
         }
 
+        // ==========================================
+        // ★ 수정된 populateCoa 함수
+        // ==========================================
         function populateCoa(saveToHistory = false) {
             const elements = {
                 productNo: document.getElementById('productNo'),
@@ -880,6 +926,7 @@ Exp. Date :3 years after Mfg. Date
             let db = [];
             try {
                 db = JSON.parse(document.getElementById('excelDataInput').value.trim());
+                console.log('Loaded product database with', db.length, 'items');
             } catch (e) {
                 console.error('Invalid JSON in product database:', e);
             }
@@ -895,13 +942,20 @@ Exp. Date :3 years after Mfg. Date
                 expDateText: ''
             };
 
-            // Parse data from text
+            // Parse data from text - 개선된 파싱
             lines.forEach(line => {
-                const ll = line.toLowerCase();
-                if (/^product code\./i.test(line)) {
-                    const m = line.match(/Product code\.?\s*([A-Za-z0-9-]+)/i);
-                    if (m) parsed.productCode = m[1];
+                const ll = line.toLowerCase().trim();
+                
+                // 제품 코드 추출 개선
+                if (ll.startsWith('product code')) {
+                    // "Product code. 7529" 또는 "Product code: 7529" 패턴 처리
+                    const codeMatch = line.match(/Product\s*code[\.:]?\s*([A-Za-z0-9-]+)/i);
+                    if (codeMatch) {
+                        parsed.productCode = codeMatch[1].trim();
+                        console.log('Parsed product code:', parsed.productCode);
+                    }
                 }
+                
                 if (/^lot\s*[-:]/i.test(ll)) {
                     parsed.lotNumber = line.replace(/lot\s*[-:]/i, '').trim();
                 }
@@ -912,20 +966,30 @@ Exp. Date :3 years after Mfg. Date
                     parsed.description = line.substring(0, line.indexOf('[')).trim();
                     parsed.casNumber = line.substring(line.indexOf('[') + 1, line.indexOf(']')).trim();
                 }
-                if (/^mfg\. date/i.test(ll)) {
+                if (/^mfg\.?\s*date/i.test(ll)) {
                     const m = line.match(/\d{4}-\d{2}-\d{2}/);
                     if (m) parsed.mfgDate = m[0];
                 }
-                if (/^exp\. date/i.test(ll)) {
+                if (/^exp\.?\s*date/i.test(ll)) {
                     parsed.expDateText = line.split(':')[1]?.trim() || '';
                 }
             });
 
-            // Database lookup
+            console.log('Parsed data:', parsed);
+
+            // Database lookup - 개선된 검색
             let fromDb = null;
             if (parsed.productCode && db.length) {
-                fromDb = db.find(p => String(p['Product code']) === String(parsed.productCode));
+                // 정확한 코드 매칭
+                fromDb = db.find(p => String(p['Product code']).trim() === String(parsed.productCode).trim());
+                
+                if (!fromDb) {
+                    // 부분 매칭 시도
+                    fromDb = db.find(p => String(p['Product code']).includes(String(parsed.productCode)));
+                }
+                
                 if (fromDb) {
+                    console.log('Found in database:', fromDb);
                     if (!manual.productNo && fromDb['Product No.']) {
                         document.getElementById('manualProductNo').value = fromDb['Product No.'];
                         manual.productNo = fromDb['Product No.'];
@@ -934,17 +998,49 @@ Exp. Date :3 years after Mfg. Date
                         document.getElementById('manualDescription').value = fromDb['Description'];
                         manual.description = fromDb['Description'];
                     }
+                } else {
+                    console.log('Product code not found in database:', parsed.productCode);
+                }
+            }
+
+            // 코드 기반 매핑 시도 (productMapping 사용)
+            let mappedProduct = null;
+            if (parsed.productCode) {
+                mappedProduct = findByCode(parsed.productCode);
+                if (mappedProduct) {
+                    console.log('Found in productMapping:', mappedProduct);
+                    if (!manual.productNo && mappedProduct.productNo) {
+                        document.getElementById('manualProductNo').value = mappedProduct.productNo;
+                        manual.productNo = mappedProduct.productNo;
+                    }
+                    if (!manual.description && mappedProduct.description) {
+                        document.getElementById('manualDescription').value = mappedProduct.description;
+                        manual.description = mappedProduct.description;
+                    }
+                    if (!parsed.casNumber && mappedProduct.cas) {
+                        parsed.casNumber = mappedProduct.cas;
+                    }
                 }
             }
 
             // Fill UI elements
-            elements.productNo.textContent = manual.productNo || (fromDb ? fromDb['Product No.'] : '') || parsed.productCode;
-            elements.description.textContent = manual.description || parsed.description || (fromDb ? fromDb['Description'] : '');
+            elements.productNo.textContent = manual.productNo || 
+                                           (fromDb ? fromDb['Product No.'] : '') || 
+                                           (mappedProduct ? mappedProduct.productNo : '') || 
+                                           parsed.productCode || 
+                                           'Unknown';
+            
+            elements.description.textContent = manual.description || 
+                                             parsed.description || 
+                                             (fromDb ? fromDb['Description'] : '') || 
+                                             (mappedProduct ? mappedProduct.description : '') || 
+                                             'Unknown';
+            
             elements.lotNumber.textContent = manual.lotNumber || parsed.lotNumber;
             elements.casNumber.textContent = parsed.casNumber;
             elements.releaseDate.textContent = parsed.mfgDate;
 
-            // Calculate retest date
+            // Calculate retest date - 개선된 로직
             let finalRetest = '';
             if (manual.retestDate) {
                 finalRetest = manual.retestDate;
@@ -957,6 +1053,8 @@ Exp. Date :3 years after Mfg. Date
                 }
             } else if (fromDb && parsed.mfgDate) {
                 finalRetest = calculateRetestDate(parsed.mfgDate, parseInt(fromDb['Retest date'], 10));
+            } else if (mappedProduct && parsed.mfgDate) {
+                finalRetest = calculateRetestDate(parsed.mfgDate, mappedProduct.retest);
             } else if (parsed.description) {
                 const normalizedDesc = parsed.description.toLowerCase();
                 for (const [key, value] of Object.entries(productMapping)) {
@@ -998,6 +1096,13 @@ Exp. Date :3 years after Mfg. Date
                     timestamp: new Date().toISOString()
                 });
             }
+            
+            console.log('Final COA data:', {
+                productNo: elements.productNo.textContent,
+                description: elements.description.textContent,
+                lotNumber: elements.lotNumber.textContent,
+                casNumber: elements.casNumber.textContent
+            });
         }
 
         // ==========================================
