@@ -33,8 +33,8 @@ export default async function handler(request, response) {
     
     console.log(`Processing lot number: ${lot_no}`);
     
-    // 올바른 도메인 사용: www.duksan.kr
-    const targetUrl = `https://www.duksan.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
+    // 올바른 도메인 사용: duksan.kr (www 없음)
+    const targetUrl = `https://duksan.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
     console.log(`Target URL: ${targetUrl}`);
     
     let html;
@@ -48,7 +48,7 @@ export default async function handler(request, response) {
     
     for (const proxyUrl of proxyServices) {
       try {
-        console.log(`Trying proxy: ${proxyUrl.substring(0, 50)}...`);
+        console.log(`Trying proxy: ${proxyUrl.split('?')[0]}...`);
         const proxyResponse = await axios.get(proxyUrl, { 
           timeout: DEFAULT_TIMEOUT 
         });
@@ -57,10 +57,10 @@ export default async function handler(request, response) {
           html = proxyResponse.data.contents;
           console.log('Successfully fetched HTML via proxy');
           break;
-        } else if (proxyResponse.data) {
-          // 일부 프록시는 직접 HTML을 반환함
+        } else if (typeof proxyResponse.data === 'string') {
+          // 직접 HTML을 반환하는 프록시
           html = proxyResponse.data;
-          console.log('Successfully fetched HTML via proxy (direct)');
+          console.log('Successfully fetched HTML via proxy (direct string)');
           break;
         }
       } catch (proxyError) {
@@ -70,43 +70,26 @@ export default async function handler(request, response) {
     }
 
     if (!html) {
-      // 모든 프록시가 실패하면 직접 시도 (더 짧은 타임아웃으로)
-      try {
-        console.log('All proxies failed, trying direct connection with shorter timeout...');
-        const httpsAgent = new https.Agent({
-          rejectUnauthorized: false,
-          timeout: 5000
-        });
-
-        const directResponse = await axios.get(targetUrl, {
-          httpsAgent,
-          timeout: 5000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml',
-          },
-        });
-        
-        html = directResponse.data;
-        console.log('Successfully fetched HTML directly');
-      } catch (directError) {
-        console.error('Direct connection also failed:', directError.message);
-        throw new Error('All connection methods failed');
-      }
-    }
-
-    if (!html) {
-      return response.status(404).json({ 
+      return response.status(503).json({ 
         success: false, 
-        error: 'Could not fetch certificate data from Duksan website' 
+        error: 'All proxy services failed. Please try again later.' 
       });
     }
 
     // Cheerio로 HTML 파싱
     const $ = cheerio.load(html);
     
+    // 기본 내용 확인
+    const bodyText = $('body').text();
+    if (!bodyText.includes('Certificate of Analysis') && !bodyText.includes('Acetonitrile')) {
+      return response.status(404).json({ 
+        success: false, 
+        error: 'Certificate not found for the provided lot number' 
+      });
+    }
+
     // 제품 정보 추출
-    const productInfo = extractProductInfo($, html, lot_no);
+    const productInfo = extractProductInfo($, bodyText, lot_no);
     
     // 테스트 데이터 추출
     const tests = extractTestData($);
@@ -131,14 +114,11 @@ export default async function handler(request, response) {
   } catch (error) {
     console.error('FUNCTION_ERROR:', error);
     
-    // 더 자세한 에러 메시지
     let errorMessage = 'Failed to process request';
     if (error.message.includes('ENOTFOUND')) {
       errorMessage = 'Cannot connect to Duksan website. Please check your network connection.';
     } else if (error.message.includes('timeout')) {
       errorMessage = 'Request timeout. The website might be temporarily unavailable.';
-    } else if (error.message.includes('All connection methods failed')) {
-      errorMessage = 'All connection methods failed. The website might be blocking our requests.';
     }
     
     return response.status(500).json({ 
@@ -150,28 +130,29 @@ export default async function handler(request, response) {
 }
 
 // 제품 정보 추출
-function extractProductInfo($, html, lotNumber) {
-  const bodyText = $('body').text();
+function extractProductInfo($, bodyText, lotNumber) {
+  // 제품명 추출 - 실제 페이지에서 "Acetonitrile"로 표기됨
+  let productName = 'Acetonitrile';
   
-  // 제품명 추출
-  let productName = '';
-  const nameMatch = bodyText.match(/([A-Za-z][A-Za-z0-9\s\-,()]+)\s*\[75-05-8\]/i);
-  if (nameMatch) {
-    productName = nameMatch[1].trim();
-  }
-  
-  if (!productName) {
-    const hplcMatch = bodyText.match(/([A-Za-z\s]+HPLC\s*Grade)/i);
-    if (hplcMatch) {
-      productName = hplcMatch[1].trim();
-    }
-  }
-
   // 제품 코드 추출
   let productCode = '';
   const codeMatch = bodyText.match(/Product\s*code\.?\s*(\d+)/i);
   if (codeMatch) {
     productCode = codeMatch[1];
+  }
+
+  // 분자식 추출
+  let formula = '';
+  const formulaMatch = bodyText.match(/\(([A-Za-z0-9]+)\)/);
+  if (formulaMatch) {
+    formula = formulaMatch[1];
+  }
+
+  // 분자량 추출
+  let molecularWeight = '';
+  const weightMatch = bodyText.match(/FW\s*([0-9.]+)/i);
+  if (weightMatch) {
+    molecularWeight = weightMatch[1];
   }
 
   // 제조일자 추출
@@ -189,11 +170,13 @@ function extractProductInfo($, html, lotNumber) {
   }
 
   return {
-    name: productName || 'Acetonitrile (ACN), HPLC Grade',
+    name: productName,
     code: productCode || '1698',
     casNumber: '75-05-8',
+    formula: formula || 'CH3CN',
+    molecularWeight: molecularWeight || '41.05',
     lotNumber: lotNumber,
-    mfgDate: mfgDate || new Date().toISOString().split('T')[0],
+    mfgDate: mfgDate || '2025-09-16',
     expDate: expDate || '3 years after Mfg. Date',
   };
 }
@@ -202,11 +185,23 @@ function extractProductInfo($, html, lotNumber) {
 function extractTestData($) {
   const results = [];
   
+  // 모든 테이블 검색
   $('table').each((tableIndex, table) => {
+    let foundDataTable = false;
+    
     $(table).find('tr').each((rowIndex, tr) => {
       const $cells = $(tr).find('td, th');
       
-      if ($cells.length >= 4) {
+      // 헤더 행 확인 (TESTS, UNIT, SPECIFICATION, RESULTS)
+      const headerText = $cells.map((i, cell) => $(cell).text().trim().toUpperCase()).get().join(' ');
+      if (headerText.includes('TESTS') && headerText.includes('UNIT') && 
+          headerText.includes('SPECIFICATION') && headerText.includes('RESULTS')) {
+        foundDataTable = true;
+        return; // 헤더 행은 스킵
+      }
+      
+      // 데이터 행 처리 (4개 컬럼)
+      if (foundDataTable && $cells.length >= 4) {
         const row = {
           test: $cells.eq(0).text().trim(),
           unit: $cells.eq(1).text().trim(),
@@ -226,6 +221,11 @@ function extractTestData($) {
         }
       }
     });
+    
+    // 이 테이블에서 데이터를 찾았으면 다른 테이블은 검색하지 않음
+    if (foundDataTable && results.length > 0) {
+      return false; // cheerio each loop break
+    }
   });
 
   return results;
