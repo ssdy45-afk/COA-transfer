@@ -1,9 +1,8 @@
 import axios from 'axios';
-import https from 'https';
+import https from 'node:https';
 import * as cheerio from 'cheerio';  // <-- FIX: cheerio has no default export in ESM
 
 // Ensure Node.js runtime on Vercel
-export const config = { runtime: 'nodejs18.x' };
 
 /**
  * GET /api/scrape?lot_no=XXXX
