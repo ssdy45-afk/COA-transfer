@@ -1,42 +1,31 @@
 import axios from 'axios';
 import https from 'https';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';  // <-- FIX: cheerio has no default export in ESM
+
+// Ensure Node.js runtime on Vercel
+export const config = { runtime: 'nodejs18.x' };
 
 /**
  * GET /api/scrape?lot_no=XXXX
- * Vercel serverless function.
  */
 export default async function handler(request, response) {
-  // CORS
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-
   if (request.method === 'OPTIONS') return response.status(200).end();
 
   const { lot_no } = request.query || {};
-  if (!lot_no) {
-    return response.status(400).json({ success: false, error: 'lot_no query parameter is required' });
-  }
-  if (!/^[A-Za-z0-9]+$/.test(lot_no)) {
-    return response.status(400).json({ success: false, error: 'Invalid lot number format' });
-  }
+  if (!lot_no) return response.status(400).json({ success: false, error: 'lot_no query parameter is required' });
+  if (!/^[A-Za-z0-9]+$/.test(lot_no)) return response.status(400).json({ success: false, error: 'Invalid lot number format' });
 
   try {
     const targetUrl = `https://www.duksan.co.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
 
-    const httpsAgent = new https.Agent({
-      keepAlive: true,
-      timeout: 30000,
-      rejectUnauthorized: false,
-      keepAliveMsecs: 1000,
-    });
-
+    const httpsAgent = new https.Agent({ keepAlive: true, timeout: 30000, rejectUnauthorized: false, keepAliveMsecs: 1000 });
     const config = {
-      httpsAgent,
-      timeout: 30000,
+      httpsAgent, timeout: 30000, maxRedirects: 5, decompress: true,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br',
@@ -45,54 +34,38 @@ export default async function handler(request, response) {
         'Referer': 'https://www.duksan.co.kr/',
         'Upgrade-Insecure-Requests': '1',
       },
-      maxRedirects: 5,
-      validateStatus: (status) => status >= 200 && status < 400,
-      decompress: true,
+      validateStatus: (s) => s >= 200 && s < 400,
     };
 
-    let axiosResponse;
+    let res;
     let usedProxy = false;
 
     try {
-      // 1) Direct
-      axiosResponse = await axios.get(targetUrl, config);
-    } catch (directError) {
-      // 2) CORS proxy fallback
+      res = await axios.get(targetUrl, config);
+    } catch (e) {
+      // Proxy fallback
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-      const proxyResponse = await axios.get(proxyUrl, { timeout: 30000 });
-      if (proxyResponse.data && proxyResponse.data.contents) {
-        axiosResponse = { status: 200, data: proxyResponse.data.contents, headers: { 'content-type': 'text/html' } };
+      const proxy = await axios.get(proxyUrl, { timeout: 30000 });
+      if (proxy.data && proxy.data.contents) {
+        res = { status: 200, data: proxy.data.contents, headers: { 'content-type': 'text/html' } };
         usedProxy = true;
       } else {
-        throw directError; // bubble up original connectivity error
+        throw e;
       }
     }
 
-    if (!axiosResponse || axiosResponse.status !== 200) {
-      return response.status(502).json({ success: false, error: `Upstream fetch failed (${axiosResponse?.status || 'no status'})` });
+    if (!res || res.status !== 200) {
+      return response.status(502).json({ success: false, error: `Upstream fetch failed (${res?.status || 'no status'})` });
     }
 
-    const html = axiosResponse.data;
+    const html = res.data;
     const $ = cheerio.load(html);
 
-    // 0) Very short/empty content -> treat as "not found" (not a server error)
     const bodyText = ($('body').text() || '').replace(/\s+/g, '');
     if (bodyText.length < 50) {
-      return response.status(404).json({
-        success: false,
-        error: 'Analysis certificate not found',
-        message: `No certificate content for lot number: ${lot_no}`
-      });
-    }
-    if (bodyText.includes('404') || /Not\s*Found/i.test(bodyText)) {
-      return response.status(404).json({
-        success: false,
-        error: 'Analysis certificate not found',
-        message: `No certificate found for lot number: ${lot_no}`
-      });
+      return response.status(404).json({ success: false, error: 'Analysis certificate not found', message: `No certificate content for lot number: ${lot_no}` });
     }
 
-    // Main parsing
     let results = [];
     $('table').each((_, table) => {
       $(table).find('tr').each((__, tr) => {
@@ -108,12 +81,8 @@ export default async function handler(request, response) {
         }
       });
     });
+    if (results.length === 0) results = parseAlternativeTests($);
 
-    if (results.length === 0) {
-      results = parseAlternativeTests($);
-    }
-
-    // Extract product metadata
     const productName = extractProductName($, html);
     const productCode = extractProductCode($, html);
     const casNumber = extractCasNumber(html);
@@ -121,11 +90,7 @@ export default async function handler(request, response) {
     const expDate = extractExpDate(html);
 
     if (results.length === 0) {
-      return response.status(404).json({
-        success: false,
-        error: 'No test data found',
-        message: 'Certificate found but no test rows could be extracted'
-      });
+      return response.status(404).json({ success: false, error: 'No test data found', message: 'Certificate found but no test rows could be extracted' });
     }
 
     const data = {
@@ -145,27 +110,18 @@ export default async function handler(request, response) {
 
     return response.status(200).json(data);
   } catch (error) {
-    // Map common network errors to user-meaningful HTTP codes
     const msg = String(error?.message || 'Unknown error');
     let statusCode = 502;
     if (/timeout|ETIMEDOUT|Abort/i.test(msg)) statusCode = 408;
     if (/ENOTFOUND|ECONNRESET|ECONNREFUSED|EHOSTUNREACH/i.test(msg)) statusCode = 503;
 
-    return response.status(statusCode).json({
-      success: false,
-      error: 'Failed to fetch analysis certificate',
-      message: msg,
-    });
+    return response.status(statusCode).json({ success: false, error: 'Failed to fetch analysis certificate', message: msg });
   }
 }
 
-/* ------------ helpers ------------- */
 function isValidTestRow(item) {
-  return item.test &&
-         item.test.length > 1 &&
-         !/^(TESTS|UNIT|SPECIFICATION|RESULTS|항목|시험항목|Test|Item)$/i.test(item.test);
+  return item.test && item.test.length > 1 && !/^(TESTS|UNIT|SPECIFICATION|RESULTS|항목|시험항목|Test|Item)$/i.test(item.test);
 }
-
 function cleanExtractedData(results) {
   return results.map(item => ({
     test: (item.test || '').replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim(),
@@ -174,10 +130,8 @@ function cleanExtractedData(results) {
     result: (item.result || '').replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim(),
   })).filter(it => it.test && it.test.length > 1 && !/^(TESTS|UNIT|SPECIFICATION|RESULTS)$/i.test(it.test));
 }
-
 function parseAlternativeTests($) {
   const results = [];
-  // Try two-column layouts like: "TEST  SPEC  RESULT"
   $('p, li, div').each((_, el) => {
     const text = $(el).text().replace(/\s+/g, ' ').trim();
     const m = text.match(/^(.{2,40}?)\s{2,}([^\s].{0,60}?)\s{2,}([^\s].{0,60})$/);
@@ -185,33 +139,26 @@ function parseAlternativeTests($) {
   });
   return results;
 }
-
 function extractProductName($, html) {
-  const h1 = $('h1,h2,h3').first().text().trim();
-  if (h1) return h1;
-  // Example like: "Acetonitrile [75-05-8]"
+  const h = $('h1,h2,h3').first().text().trim();
+  if (h) return h;
   const m = html.match(/([A-Za-z][A-Za-z0-9\s\-]+)\s*\[\d{2}-\d{2}-\d{1}\]/);
   return m ? m[1] : '';
 }
-
 function extractProductCode($, html) {
-  // Attempt common labels
   const codeLabel = $('td,th').filter((_, el) => /Product\s*code/i.test($(el).text())).next().text().trim();
   if (codeLabel) return codeLabel;
   const m = html.match(/Product(?:\s*code|\s*No\.?)\s*[:\-]?\s*([A-Za-z0-9\-]+)/i);
   return m ? m[1] : '';
 }
-
 function extractCasNumber(html) {
   const m = html.match(/\b\d{2}-\d{2}-\d\b/);
   return m ? m[0] : '';
 }
-
 function extractMfgDate(html) {
   const m = html.match(/Mfg\.?\s*Date\s*[:\-]?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
   return m ? m[1] : '';
 }
-
 function extractExpDate(html) {
   const m = html.match(/Exp\.?\s*Date\s*[:\-]?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
   return m ? m[1] : '';
