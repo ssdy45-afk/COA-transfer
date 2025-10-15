@@ -1,10 +1,10 @@
-import axios from 'axios';
-import https from 'https';
-import cheerio from 'cheerio';
+const axios = require('axios');
+const https = require('https');
+const cheerio = require('cheerio');
 
 const DEFAULT_TIMEOUT = 15000;
 
-export default async function handler(request, response) {
+module.exports = async function handler(request, response) {
   // CORS 설정
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -27,7 +27,6 @@ export default async function handler(request, response) {
     console.log(`Processing lot number: ${lot_no}`);
     
     const targetUrl = `https://www.duksan.co.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
-    console.log(`Target URL: ${targetUrl}`);
     
     let html;
     try {
@@ -82,7 +81,7 @@ export default async function handler(request, response) {
     // 제품 정보 추출
     const productInfo = extractProductInfo($, html, lot_no);
     
-    // 테스트 데이터 추출 - 개선된 버전
+    // 테스트 데이터 추출
     const tests = extractTestData($);
     
     if (tests.length === 0) {
@@ -114,17 +113,15 @@ export default async function handler(request, response) {
 
 // 제품 정보 추출
 function extractProductInfo($, html, lotNumber) {
-  // 제품명 추출 - 다양한 방법 시도
-  let productName = '';
-  
-  // 방법 1: 테이블 앞의 텍스트에서 추출
   const bodyText = $('body').text();
+  
+  // 제품명 추출
+  let productName = '';
   const nameMatch = bodyText.match(/([A-Za-z][A-Za-z0-9\s\-,()]+)\s*\[75-05-8\]/i);
   if (nameMatch) {
     productName = nameMatch[1].trim();
   }
   
-  // 방법 2: HPLC Grade 텍스트 주변에서 추출
   if (!productName) {
     const hplcMatch = bodyText.match(/([A-Za-z\s]+HPLC\s*Grade)/i);
     if (hplcMatch) {
@@ -163,18 +160,14 @@ function extractProductInfo($, html, lotNumber) {
   };
 }
 
-// 테스트 데이터 추출 - 개선된 버전
+// 테스트 데이터 추출
 function extractTestData($) {
   const results = [];
   
-  // 모든 테이블 검색
   $('table').each((tableIndex, table) => {
-    console.log(`Processing table ${tableIndex}`);
-    
     $(table).find('tr').each((rowIndex, tr) => {
       const $cells = $(tr).find('td, th');
       
-      // 4개 컬럼을 가진 행만 처리 (Test, Unit, Specification, Results)
       if ($cells.length >= 4) {
         const row = {
           test: $cells.eq(0).text().trim(),
@@ -183,7 +176,6 @@ function extractTestData($) {
           result: $cells.eq(3).text().trim(),
         };
         
-        // 유효한 테스트 행인지 확인
         if (isValidTestRow(row)) {
           const cleanedRow = {
             test: cleanText(row.test),
@@ -192,57 +184,7 @@ function extractTestData($) {
             result: cleanText(row.result),
           };
           
-          console.log(`Found valid test row: ${cleanedRow.test}`);
           results.push(cleanedRow);
-        }
-      }
-    });
-  });
-
-  // 테이블을 찾지 못한 경우 대체 방법 시도
-  if (results.length === 0) {
-    console.log('No table data found, trying alternative parsing...');
-    return parseAlternativeTests($);
-  }
-
-  return results;
-}
-
-// 대체 파싱 방법
-function parseAlternativeTests($) {
-  const results = [];
-  const testPatterns = [
-    'Appearance', 'Absorbance', 'Assay', 'Color', 'Density', 
-    'Evaporation residue', 'Fluorescence Background', 'Identification',
-    'Gradient Suitability', 'Optical Absorbance', 'Refractive index',
-    'Titratable Acid', 'Titratable Base', 'Water'
-  ];
-
-  $('td, div, p').each((_, element) => {
-    const text = $(element).text().trim();
-    
-    testPatterns.forEach(pattern => {
-      if (text.includes(pattern)) {
-        // 인접한 요소에서 데이터 추출 시도
-        const rowElement = $(element).closest('tr, div');
-        const cells = rowElement.find('td, span');
-        
-        if (cells.length >= 4) {
-          const row = {
-            test: cells.eq(0).text().trim(),
-            unit: cells.eq(1).text().trim(),
-            specification: cells.eq(2).text().trim(),
-            result: cells.eq(3).text().trim(),
-          };
-          
-          if (isValidTestRow(row)) {
-            results.push({
-              test: cleanText(row.test),
-              unit: cleanText(row.unit),
-              specification: cleanText(row.specification),
-              result: cleanText(row.result),
-            });
-          }
         }
       }
     });
