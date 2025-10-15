@@ -33,7 +33,8 @@ export default async function handler(request, response) {
     
     console.log(`Processing lot number: ${lot_no}`);
     
-    const targetUrl = `https://www.duksan.co.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
+    // 도메인을 duksan.kr로 변경
+    const targetUrl = `https://www.duksan.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
     
     let html;
     try {
