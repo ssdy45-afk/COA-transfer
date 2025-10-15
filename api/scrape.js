@@ -1,10 +1,12 @@
-const axios = require('axios');
-const https = require('https');
-const cheerio = require('cheerio');
+import axios from 'axios';
+import https from 'https';
+
+// cheerio를 동적으로 import
+let cheerio;
 
 const DEFAULT_TIMEOUT = 15000;
 
-module.exports = async function handler(request, response) {
+export default async function handler(request, response) {
   // CORS 설정
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -24,6 +26,11 @@ module.exports = async function handler(request, response) {
   }
 
   try {
+    // cheerio 동적 import
+    if (!cheerio) {
+      cheerio = await import('cheerio');
+    }
+    
     console.log(`Processing lot number: ${lot_no}`);
     
     const targetUrl = `https://www.duksan.co.kr/page/03/lot_print.php?lot_num=${encodeURIComponent(lot_no)}`;
