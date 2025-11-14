@@ -279,11 +279,12 @@ function extractCompleteProductInfo($, html, lotNumber) {
   }
   
   if (!mfgDate) {
-    mfgDate = new Date().toISOString().split('T')[0];
+     mfgDate = ""; // 빈 문자열로 설정
+    console.log("No Mfg Date found, leaving it empty");
   }
   
   if (!expDate) {
-    expDate = "3 years after Mfg. Date";
+    expDate = "";
   }
 
   return {
