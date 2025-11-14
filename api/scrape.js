@@ -217,7 +217,7 @@ function extractCompleteProductInfo($, html, lotNumber) {
     /Mfg\.?\s*Date\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,
     /Manufacturing\s*Date\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,
     /제조일자\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,
-    /Retest\s*Date\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,  // Retest Date를 위한 정규식 추가
+    /Retest\.?\s*Date\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,  // Retest Date를 위한 정규식 추가
     /Re-test\s*Date\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,  // 다른 형태의 정규식 추가
     /(\d{4}-\d{2}-\d{2})\s*\(Mfg\.?\s*Date\)/i,
     /Mfg\.?\s*Date\s*(\d{4}-\d{2}-\d{2})/i
