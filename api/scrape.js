@@ -212,23 +212,30 @@ function extractCompleteProductInfo($, html, lotNumber) {
   
   // 제조일자 추출
   let mfgDate = '';
-  const mfgPatterns = [
+  let retestDate = '';
+  const datePatterns = [
     /Mfg\.?\s*Date\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,
     /Manufacturing\s*Date\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,
     /제조일자\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,
+    /Retest\s*Date\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,  // Retest Date를 위한 정규식 추가
+    /Re-test\s*Date\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i,  // 다른 형태의 정규식 추가
     /(\d{4}-\d{2}-\d{2})\s*\(Mfg\.?\s*Date\)/i,
     /Mfg\.?\s*Date\s*(\d{4}-\d{2}-\d{2})/i
   ];
   
-  for (const pattern of mfgPatterns) {
+  for (const pattern of datePatterns) {
     const match = bodyText.match(pattern);
     if (match) {
-      mfgDate = match[1];
+      if (pattern.toString().includes("Retest")) {
+      retestDate = match[1];  // Retest Date가 포함된 정규식일 경우
+      console.log(`Found Retest Date: ${retestDate} with pattern: ${pattern}`);
+    } else {
+      mfgDate = match[1];  // Mfg. Date일 경우
       console.log(`Found Mfg Date: ${mfgDate} with pattern: ${pattern}`);
-      break;
+      
     }
   }
-  
+}  
   // 만료일자 추출
   let expDate = '';
   const expPatterns = [
