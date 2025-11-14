@@ -231,8 +231,7 @@ function extractCompleteProductInfo($, html, lotNumber) {
       console.log(`Found Retest Date: ${retestDate} with pattern: ${pattern}`);
     } else {
       mfgDate = match[1];  // Mfg. Date일 경우
-      console.log(`Found Mfg Date: ${mfgDate} with pattern: ${pattern}`);
-      
+      console.log(`Found Mfg Date: ${mfgDate} with pattern: ${pattern}`);    
     }
   }
 }  
